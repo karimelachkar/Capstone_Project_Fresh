@@ -4,3 +4,4 @@ entrypoint: gunicorn -b :$PORT main:app
 env_variables:
   FLASK_ENV: "production"
   SECRET_KEY: "supersecretkey"
+  SESSION_TYPE: "filesystem"
