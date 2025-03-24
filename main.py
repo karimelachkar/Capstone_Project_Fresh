@@ -6,6 +6,9 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logging.info("Starting application")
 
+# Define a variable to store initialization errors
+init_error = None
+
 try:
     # Add the backend directory to the path
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend'))
@@ -26,17 +29,19 @@ try:
     logging.info("Application created successfully")
 except Exception as e:
     logging.error(f"Error creating app: {str(e)}")
+    # Store the error message for the error handler
+    init_error = str(e)
     # Create a minimal Flask app for error reporting
     from flask import Flask, jsonify
     app = Flask(__name__)
     
     @app.route('/')
     def error():
-        return f'Error initializing application: {str(e)}', 500
+        return f'Error initializing application: {init_error}', 500
     
     @app.route('/api/health')
     def health():
-        return jsonify({'status': 'error', 'message': str(e)})
+        return jsonify({'status': 'error', 'message': init_error})
 
 # Only used when running locally
 if __name__ == '__main__':
