@@ -11,12 +11,18 @@ init_error = None
 
 try:
     # Add the backend directory to the path
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend'))
-    logging.info("Added backend directory to path")
+    backend_dir = os.path.join(os.path.dirname(__file__), 'backend')
+    sys.path.insert(0, backend_dir)
+    logging.info(f"Added backend directory to path: {backend_dir}")
     
-    # Import the create_app function from app.py in the backend directory
-    from app import create_app
-    logging.info("Imported create_app function")
+    # Instead of importing 'from app import create_app',
+    # Import the module directly to avoid package vs module confusion
+    import app as app_module
+    logging.info("Imported app module")
+    
+    # Get the create_app function from the module
+    create_app = app_module.create_app
+    logging.info("Got create_app function")
     
     # Create the application
     app = create_app()
