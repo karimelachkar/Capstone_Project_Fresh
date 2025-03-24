@@ -30,7 +30,7 @@ steps:
 timeout: "1600s"
 options:
   logging: CLOUD_LOGGING_ONLY
-  # Specify europe-southwest1 to match the existing trigger configuration
+  # Specify europe-southwest1 as the build region
   pool:
-    name: "projects/${capstone-integration-project}/locations/europe-southwest1/workerPools/default"
+    name: "projects/capstone-integration-karim/locations/europe-southwest1/workerPools/default"
 #trigger test change
