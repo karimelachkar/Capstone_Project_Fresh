@@ -30,3 +30,6 @@ steps:
 timeout: "1600s"
 options:
   logging: CLOUD_LOGGING_ONLY
+  # Specify europe-west1 as the build region
+  pool:
+    name: "projects/${PROJECT_ID}/locations/europe-west1/workerPools/default"
