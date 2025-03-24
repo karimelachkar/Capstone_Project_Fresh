@@ -6,7 +6,7 @@ Handles CRUD operations for collections and collection items, including search a
 import uuid
 from flask import Blueprint, request, jsonify, session, Response
 from functools import wraps
-from backend.app.config.bigquery import get_bigquery_client, BQ_COLLECTION_ITEMS_TABLE, BQ_COLLECTIONS_TABLE
+from backend.app.config.bigquery import get_bigquery_client, BQ_COLLECTION_ITEMS_TABLE, BQ_COLLECTIONS_TABLE, BQ_DATASET
 from google.cloud import bigquery
 import csv
 import io
@@ -539,6 +539,19 @@ def get_collection_analytics():
     client = get_bigquery_client()
     client._location = "europe-southwest1"
     
+    # Ensure that all required tables exist
+    if not ensure_tables_exist():
+        return jsonify({"error": "Failed to ensure required tables exist"}), 500
+    
+    try:
+        # Print schema information for debugging
+        print(f"[DEBUG] Attempting to fetch table schema for: {BQ_COLLECTION_ITEMS_TABLE}")
+        table_ref = client.dataset(BQ_DATASET.split('.')[0]).table(BQ_COLLECTION_ITEMS_TABLE.split('.')[-1])
+        table = client.get_table(table_ref)
+        print(f"[DEBUG] Table schema: {[field.name for field in table.schema]}")
+    except Exception as e:
+        print(f"[DEBUG] Error fetching schema: {str(e)}")
+    
     # Get total items count
     items_query = f"""
         SELECT COUNT(*) as total_items
@@ -557,13 +570,25 @@ def get_collection_analytics():
         ORDER BY item_count DESC
     """
     
-    # Get tag statistics
+    # Get tag statistics - try without UNNEST first in case tags is not a repeated field
     tags_query = f"""
-        SELECT tag, COUNT(*) as usage_count
+        SELECT 
+            CASE
+                WHEN ARRAY_LENGTH(tags) > 0 THEN tag
+                ELSE NULL
+            END AS tag,
+            COUNT(*) as usage_count
         FROM `{BQ_COLLECTION_ITEMS_TABLE}`,
-        UNNEST(tags) as tag
+        UNNEST(
+            CASE
+                WHEN tags IS NULL THEN ["No Tag"]
+                WHEN ARRAY_LENGTH(tags) = 0 THEN ["No Tag"]
+                ELSE tags
+            END
+        ) as tag
         WHERE user_id = @user_id
         GROUP BY tag
+        HAVING tag IS NOT NULL
         ORDER BY usage_count DESC
     """
     
@@ -577,20 +602,41 @@ def get_collection_analytics():
         # Execute queries
         items_result = client.query(items_query, job_config=job_config).result()
         collections_result = client.query(collections_query, job_config=job_config).result()
-        tags_result = client.query(tags_query, job_config=job_config).result()
+        
+        try:
+            tags_result = client.query(tags_query, job_config=job_config).result()
+            tags = [dict(row) for row in tags_result]
+        except Exception as tag_error:
+            # If tags query fails, use a simpler approach
+            print(f"[WARNING] Original tags query failed: {str(tag_error)}, trying simplified version")
+            simplified_tags_query = f"""
+                SELECT 'All Items' as tag, COUNT(*) as usage_count
+                FROM `{BQ_COLLECTION_ITEMS_TABLE}`
+                WHERE user_id = @user_id
+            """
+            try:
+                tags_result = client.query(simplified_tags_query, job_config=job_config).result()
+                tags = [dict(row) for row in tags_result]
+            except Exception as e:
+                print(f"[ERROR] Simplified tags query also failed: {str(e)}")
+                tags = []
         
         # Process results
         total_items = next(items_result).total_items
         collections = [dict(row) for row in collections_result]
-        tags = [dict(row) for row in tags_result]
         
         return jsonify({
             "total_items": total_items,
             "collections": collections,
             "tags": tags
         }), 200
+    except bigquery.exceptions.GoogleCloudError as e:
+        print(f"[ERROR] BigQuery API error: {str(e)}")
+        return jsonify({"error": "BigQuery API error", "details": str(e)}), 500
     except Exception as e:
+        import traceback
         print(f"[ERROR] Analytics query failed: {str(e)}")
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
         return jsonify({"error": "Failed to get analytics", "details": str(e)}), 500
 
 @collection_blueprint.route("/create", methods=["POST"])
@@ -912,10 +958,28 @@ def get_collections_list():
     client = get_bigquery_client()
     client._location = "europe-southwest1"
     
+    # Ensure that all required tables exist
+    if not ensure_tables_exist():
+        return jsonify({"error": "Failed to ensure required tables exist"}), 500
+    
+    try:
+        # Print schema information for debugging
+        print(f"[DEBUG] Attempting to fetch collections table schema for: {BQ_COLLECTIONS_TABLE}")
+        table_ref = client.dataset(BQ_DATASET.split('.')[0]).table(BQ_COLLECTIONS_TABLE.split('.')[-1])
+        table = client.get_table(table_ref)
+        print(f"[DEBUG] Collections table schema: {[field.name for field in table.schema]}")
+        
+        print(f"[DEBUG] Attempting to fetch items table schema for: {BQ_COLLECTION_ITEMS_TABLE}")
+        items_ref = client.dataset(BQ_DATASET.split('.')[0]).table(BQ_COLLECTION_ITEMS_TABLE.split('.')[-1])
+        items_table = client.get_table(items_ref)
+        print(f"[DEBUG] Items table schema: {[field.name for field in items_table.schema]}")
+    except Exception as e:
+        print(f"[DEBUG] Error fetching schema: {str(e)}")
+    
     query = f"""
         SELECT 
             c.collection_name,
-            c.description,
+            IFNULL(c.description, '') as description,
             COUNT(i.item_id) as item_count,
             MIN(i.created_at) as oldest_item,
             MAX(i.updated_at) as newest_item
@@ -938,8 +1002,13 @@ def get_collections_list():
         results = client.query(query, job_config=job_config).result()
         collections = [dict(row) for row in results]
         return jsonify({"collections": collections}), 200
+    except bigquery.exceptions.GoogleCloudError as e:
+        print(f"[ERROR] BigQuery API error in collections-list: {str(e)}")
+        return jsonify({"error": "BigQuery API error", "details": str(e)}), 500
     except Exception as e:
+        import traceback
         print(f"[ERROR] Failed to get collections list: {str(e)}")
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
         return jsonify({"error": "Failed to get collections list", "details": str(e)}), 500
 
 @collection_blueprint.route("/export/<string:collection_name>", methods=["GET"])
@@ -1022,3 +1091,64 @@ def export_collection(collection_name):
     except Exception as e:
         print(f"[ERROR] Failed to export collection: {str(e)}")
         return jsonify({"error": "Failed to export collection", "details": str(e)}), 500
+
+def ensure_tables_exist():
+    """
+    Utility function to check if required BigQuery tables exist and create them if not.
+    """
+    client = get_bigquery_client()
+    dataset_id = BQ_DATASET.split('.')[0]
+    
+    try:
+        # Check if dataset exists, create if not
+        try:
+            client.get_dataset(dataset_id)
+            print(f"[INFO] Dataset {dataset_id} exists")
+        except Exception:
+            print(f"[INFO] Creating dataset {dataset_id}")
+            dataset = bigquery.Dataset(f"{client.project}.{dataset_id}")
+            dataset.location = "europe-southwest1"
+            client.create_dataset(dataset, exists_ok=True)
+        
+        # Check if collections table exists, create if not
+        collections_table_id = BQ_COLLECTIONS_TABLE.split('.')[-1]
+        try:
+            client.get_table(f"{client.project}.{dataset_id}.{collections_table_id}")
+            print(f"[INFO] Table {collections_table_id} exists")
+        except Exception:
+            print(f"[INFO] Creating table {collections_table_id}")
+            collections_schema = [
+                bigquery.SchemaField("user_id", "STRING", mode="REQUIRED"),
+                bigquery.SchemaField("collection_name", "STRING", mode="REQUIRED"),
+                bigquery.SchemaField("description", "STRING", mode="NULLABLE"),
+                bigquery.SchemaField("created_at", "TIMESTAMP", mode="NULLABLE"),
+                bigquery.SchemaField("updated_at", "TIMESTAMP", mode="NULLABLE")
+            ]
+            table = bigquery.Table(f"{client.project}.{dataset_id}.{collections_table_id}", schema=collections_schema)
+            client.create_table(table, exists_ok=True)
+        
+        # Check if collection items table exists, create if not
+        items_table_id = BQ_COLLECTION_ITEMS_TABLE.split('.')[-1]
+        try:
+            client.get_table(f"{client.project}.{dataset_id}.{items_table_id}")
+            print(f"[INFO] Table {items_table_id} exists")
+        except Exception:
+            print(f"[INFO] Creating table {items_table_id}")
+            items_schema = [
+                bigquery.SchemaField("user_id", "STRING", mode="REQUIRED"),
+                bigquery.SchemaField("item_id", "STRING", mode="REQUIRED"),
+                bigquery.SchemaField("collection_name", "STRING", mode="NULLABLE"),
+                bigquery.SchemaField("name", "STRING", mode="NULLABLE"),
+                bigquery.SchemaField("description", "STRING", mode="NULLABLE"),
+                bigquery.SchemaField("value", "FLOAT", mode="NULLABLE"),
+                bigquery.SchemaField("tags", "STRING", mode="REPEATED"),
+                bigquery.SchemaField("created_at", "TIMESTAMP", mode="NULLABLE"),
+                bigquery.SchemaField("updated_at", "TIMESTAMP", mode="NULLABLE")
+            ]
+            table = bigquery.Table(f"{client.project}.{dataset_id}.{items_table_id}", schema=items_schema)
+            client.create_table(table, exists_ok=True)
+            
+        return True
+    except Exception as e:
+        print(f"[ERROR] Error ensuring tables exist: {str(e)}")
+        return False
