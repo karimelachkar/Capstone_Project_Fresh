@@ -32,4 +32,4 @@ options:
   logging: CLOUD_LOGGING_ONLY
   # Specify europe-west1 as the build region
   pool:
-    name: "projects/${PROJECT_ID}/locations/europe-west1/workerPools/default"
+    name: "projects/${PROJECT_ID}/locations/europe-southwest1/workerPools/default"
