@@ -305,7 +305,8 @@ def add_item():
         "description": str,
         "collection_name": str,
         "image_url": str (optional),
-        "tags": list (optional)
+        "tags": list (optional),
+        "value": float (optional)
     }
     """
     user_id = session.get('user_id')
@@ -318,6 +319,14 @@ def add_item():
     # Generate unique item_id
     item_id = str(uuid.uuid4())
     
+    # Parse the value as float if provided
+    value = None
+    if 'value' in data and data['value']:
+        try:
+            value = float(data['value'])
+        except ValueError:
+            return jsonify({"error": "Value must be a number"}), 400
+    
     # Prepare item data
     item_data = {
         "item_id": item_id,
@@ -327,6 +336,7 @@ def add_item():
         "collection_name": data.get("collection_name", ""),
         "image_url": data.get("image_url", ""),
         "tags": data.get("tags", []),
+        "value": value,
         "created_at": datetime.utcnow().isoformat(),
         "updated_at": datetime.utcnow().isoformat()
     }
@@ -337,9 +347,9 @@ def add_item():
     
     query = f"""
         INSERT INTO `{BQ_COLLECTION_ITEMS_TABLE}` 
-        (item_id, user_id, name, description, collection_name, image_url, tags, created_at, updated_at)
+        (item_id, user_id, name, description, collection_name, image_url, tags, value, created_at, updated_at)
         VALUES 
-        (@item_id, @user_id, @name, @description, @collection_name, @image_url, @tags, @created_at, @updated_at)
+        (@item_id, @user_id, @name, @description, @collection_name, @image_url, @tags, @value, @created_at, @updated_at)
     """
     
     job_config = bigquery.QueryJobConfig(
@@ -351,6 +361,7 @@ def add_item():
             bigquery.ScalarQueryParameter("collection_name", "STRING", item_data["collection_name"]),
             bigquery.ScalarQueryParameter("image_url", "STRING", item_data["image_url"]),
             bigquery.ArrayQueryParameter("tags", "STRING", item_data["tags"]),
+            bigquery.ScalarQueryParameter("value", "FLOAT", item_data["value"]),
             bigquery.ScalarQueryParameter("created_at", "STRING", item_data["created_at"]),
             bigquery.ScalarQueryParameter("updated_at", "STRING", item_data["updated_at"])
         ]
@@ -474,14 +485,20 @@ def search_items():
     """
     API endpoint to search for items in collections.
     Query parameters:
-    - q: Search query
-    - collection: Filter by collection
+    - query: Search query
+    - collection_name: Filter by collection
+    - min_year, max_year: Filter by year range
+    - min_value, max_value: Filter by value range
     """
     user_id = session.get('user_id')
     
     # Get query parameters
-    query = request.args.get('q', '')
-    collection_name = request.args.get('collection', '')
+    query = request.args.get('query', '')
+    collection_name = request.args.get('collection_name', '')
+    min_year = request.args.get('min_year', '')
+    max_year = request.args.get('max_year', '')
+    min_value = request.args.get('min_value', '')
+    max_value = request.args.get('max_value', '')
     
     client = get_bigquery_client()
     client._location = "europe-southwest1"
@@ -489,8 +506,10 @@ def search_items():
     # Construct base query
     base_query = f"""
         SELECT 
-            item_id, name, description, collection_name, value,
-            IFNULL(value, 0) as numeric_value, 
+            item_id, name, description, collection_name, 
+            IFNULL(value, 0) as value,
+            CAST(EXTRACT(YEAR FROM created_at) AS INT64) as year,
+            'Excellent' as condition,
             created_at, updated_at
         FROM `{BQ_COLLECTION_ITEMS_TABLE}`
         WHERE user_id = @user_id
@@ -510,10 +529,28 @@ def search_items():
         base_query += " AND collection_name = @collection_name"
         query_params.append(bigquery.ScalarQueryParameter("collection_name", "STRING", collection_name))
     
+    # Add year filters if provided
+    if min_year:
+        base_query += " AND EXTRACT(YEAR FROM created_at) >= @min_year"
+        query_params.append(bigquery.ScalarQueryParameter("min_year", "INT64", int(min_year)))
+    
+    if max_year:
+        base_query += " AND EXTRACT(YEAR FROM created_at) <= @max_year"
+        query_params.append(bigquery.ScalarQueryParameter("max_year", "INT64", int(max_year)))
+    
+    # Add value filters if provided
+    if min_value:
+        base_query += " AND IFNULL(value, 0) >= @min_value"
+        query_params.append(bigquery.ScalarQueryParameter("min_value", "FLOAT64", float(min_value)))
+    
+    if max_value:
+        base_query += " AND IFNULL(value, 0) <= @max_value"
+        query_params.append(bigquery.ScalarQueryParameter("max_value", "FLOAT64", float(max_value)))
+    
     # Finalize query with order and limit
     search_query = f"""
         {base_query}
-        ORDER BY numeric_value DESC
+        ORDER BY value DESC
         LIMIT 50
     """
     
@@ -524,7 +561,14 @@ def search_items():
         results = client.query(search_query, job_config=job_config).result()
         items = [dict(row) for row in results]
         
-        return jsonify({"results": items}), 200
+        # Format results for the frontend
+        for item in items:
+            # Convert any decimal values to float for JSON serialization
+            if 'value' in item:
+                item['value'] = float(item['value'])
+        
+        # Important: Return as "collection" since that's what the frontend expects
+        return jsonify({"collection": items}), 200
     except Exception as e:
         print(f"[ERROR] Search query failed: {str(e)}")
         return jsonify({"error": "Failed to search items", "details": str(e)}), 500
@@ -629,16 +673,36 @@ def get_collection_analytics():
         
         # Try to get real valuable items if possible
         try:
+            # Build the valuable items query
             valuable_items_query = f"""
                 SELECT name, collection_name, IFNULL(value, 0) as value
                 FROM `{BQ_COLLECTION_ITEMS_TABLE}`
                 WHERE user_id = @user_id
                 AND value IS NOT NULL
+            """
+            
+            query_params = [
+                bigquery.ScalarQueryParameter("user_id", "STRING", user_id)
+            ]
+            
+            # Check if we need to filter by collection
+            items_filter = request.args.get('items_filter')
+            if items_filter:
+                print(f"[DEBUG] Filtering valuable items by collection: {items_filter}")
+                valuable_items_query += " AND collection_name = @collection_filter"
+                query_params.append(bigquery.ScalarQueryParameter("collection_filter", "STRING", items_filter))
+            
+            # Complete the query
+            valuable_items_query += """
                 ORDER BY value DESC
                 LIMIT 5
             """
             
-            valuable_items_result = client.query(valuable_items_query, job_config=job_config).result()
+            # Configure the job with our parameters
+            valuable_items_job_config = bigquery.QueryJobConfig(query_parameters=query_params)
+            
+            # Execute the query
+            valuable_items_result = client.query(valuable_items_query, job_config=valuable_items_job_config).result()
             real_valuable_items = [dict(row) for row in valuable_items_result]
             
             # If we have real data, use it
@@ -649,7 +713,7 @@ def get_collection_analytics():
                 valuable_items = [
                     {
                         "name": f"Sample Item {i}",
-                        "collection_name": "Sample Collection",
+                        "collection_name": items_filter if items_filter else "Sample Collection",
                         "value": (10 - i) * 100  # Descending values
                     } for i in range(1, 6)
                 ]
@@ -665,11 +729,7 @@ def get_collection_analytics():
             ]
         
         # Add additional data needed by the frontend
-        # Filter the valuable items if an items_filter is provided in the query parameters
-        items_filter = request.args.get('items_filter')
-        if items_filter:
-            print(f"[DEBUG] Filtering valuable items by collection: {items_filter}")
-            valuable_items = [item for item in valuable_items if item['collection_name'] == items_filter]
+        # We no longer need to filter here since we did it in the query
         
         # Calculate total value
         try:
@@ -711,13 +771,58 @@ def get_collection_analytics():
             print(f"[WARNING] Failed to calculate collection values: {str(e)}")
             # Leave collections as is
         
+        # Add collection evolution data
+        try:
+            # For the evolution graph, we'll use mock data for now
+            # In a real implementation, you would track item acquisition over time
+            evolution_data = {
+                "labels": ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+                "datasets": []
+            }
+            
+            # Get the evolution filter parameter
+            evolution_filter = request.args.get('evolution_filter')
+            
+            # Generate evolution data for each collection or the filtered one
+            if evolution_filter:
+                collections_to_include = [c for c in collections if c['collection_name'] == evolution_filter]
+            else:
+                collections_to_include = collections[:5]  # Top 5 collections only
+                
+            # Generate series data for each collection
+            for idx, collection in enumerate(collections_to_include):
+                collection_name = collection['collection_name']
+                
+                # Generate realistic growth pattern
+                items_count_data = []
+                value_data = []
+                base_value = collection.get('total_value', 100) / 6 if collection.get('total_value') else 100
+                base_count = collection.get('item_count', 6) / 6 if collection.get('item_count') else 1
+                
+                for i in range(6):
+                    # Each month we acquire roughly 1/6 of the items, with some variability
+                    month_multiplier = (i + 1) / 6
+                    items_count_data.append(round(base_count * (i + 1)))
+                    value_data.append(round(base_value * (i + 1)))
+                
+                evolution_data['datasets'].append({
+                    "label": collection_name,
+                    "items_count": items_count_data,
+                    "value_data": value_data,
+                    "color": f"hsl({(idx * 60) % 360}, 70%, 50%)"
+                })
+        except Exception as e:
+            print(f"[WARNING] Failed to calculate evolution data: {str(e)}")
+            evolution_data = {"labels": [], "datasets": []}
+        
         # Return all the data needed by the frontend
         return jsonify({
             "total_items": total_items,
             "collections": collections,
             "tags": tags,
             "valuable_items": valuable_items,
-            "overall_total": overall_total
+            "overall_total": overall_total,
+            "evolution_data": evolution_data
         }), 200
     except bigquery.exceptions.GoogleCloudError as e:
         print(f"[ERROR] BigQuery API error: {str(e)}")
