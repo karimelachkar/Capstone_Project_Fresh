@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Home - My Collections</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='home_styles.css') }}"
+    />
+  </head>
+  <body>
+    <!-- Navbar -->
+    <nav>
+      <a href="{{ url_for('auth.login_page') }}">Get Started</a>
+      <!-- Updated to redirect to login page -->
+      <a href="{{ url_for('about') }}">About Us</a>
+      <a href="{{ url_for('contact') }}">Contact</a>
+    </nav>
+
+    <!-- Hero Section with Background Slideshow -->
+    <div class="hero">
+      <div class="hero-overlay">
+        <h1>Welcome to My Collections</h1>
+        <p>Track, manage, and analyze your collectibles.</p>
+        <a href="{{ url_for('auth.login_page') }}" class="btn">Get Started</a>
+      </div>
+    </div>
+
+    <!-- Page Content -->
+    <div class="content">
+      <h2>Why Choose Us?</h2>
+      <p>
+        We provide the best tools to manage your collections efficiently and
+        effectively.
+      </p>
+    </div>
+
+    <!-- Footer -->
+    <footer>
+      <p>&copy; 2025 My Collections</p>
+    </footer>
+
+    <!-- JavaScript for Background Slideshow -->
+    <script>
+      const images = [
+        "{{ url_for('static', filename='images/img1.png') }}",
+        "{{ url_for('static', filename='images/img2.jpg') }}",
+        "{{ url_for('static', filename='images/img3.jpg') }}",
+        "{{ url_for('static', filename='images/img4.jpg') }}",
+        "{{ url_for('static', filename='images/img5.jpg') }}",
+      ];
+
+      let index = 1; // Start from img2 after img1 loads
+      const heroSection = document.querySelector(".hero");
+
+      // Function to preload all images
+      function preloadImages() {
+        images.forEach((src) => {
+          const img = new Image();
+          img.src = src;
+        });
+      }
+
+      // Function to change the background image
+      function changeBackground() {
+        heroSection.style.backgroundImage = `url('${images[index]}')`;
+        index = (index + 1) % images.length; // Loop through images
+      }
+
+      // Ensure img1 loads immediately when the page is ready
+      document.addEventListener("DOMContentLoaded", () => {
+        preloadImages(); // Preload images to prevent flickering
+        heroSection.style.backgroundImage = `url('${images[0]}')`; // Immediately set img1 as background
+        setTimeout(() => {
+          changeBackground(); // Transition to img2 after 7s
+          setInterval(changeBackground, 7000); // Continue slideshow
+        }, 7000);
+      });
+    </script>
+  </body>
+</html>

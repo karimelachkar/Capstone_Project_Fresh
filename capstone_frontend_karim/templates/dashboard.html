@@ -1,0 +1,3874 @@
+{% extends "base.html" %} {% block title %}Dashboard - My Collections{% endblock
+%} {% block content %}
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<div class="dashboard-container">
+  <!-- Global status for notifications -->
+  <div id="global-status" class=""></div>
+
+  <h2 id="welcome-message">Welcome, {{ username }}!</h2>
+
+  <div
+    id="unassigned-items-alert"
+    class="alert alert-warning"
+    style="display: none"
+  >
+    <p>
+      <strong>Attention!</strong> You have items in your collection that are
+      missing collection assignments.
+      <a href="/assign-collections" class="btn btn-sm btn-primary"
+        >Assign Collections Now</a
+      >
+    </p>
+  </div>
+
+  <div id="collections-container" style="display: none">
+    <h3>Collections</h3>
+    <div id="collections-grid" class="collections-grid">
+      <!-- Collections will be populated dynamically by JavaScript -->
+      <div class="loading-container">
+        <p class="loading">Loading collections...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add the new Search Card here -->
+  <div class="row">
+    <div class="col-md-12">
+      <div class="stats-card" id="item-search">
+        <h4>Search Items</h4>
+        <div class="card-content">
+          <div class="search-container">
+            <!-- Search bar -->
+            <div class="search-bar">
+              <input
+                type="text"
+                id="search-query"
+                placeholder="Search for items..."
+              />
+              <button id="search-button">
+                <i class="fas fa-search"></i> Search
+              </button>
+            </div>
+
+            <!-- Filters toggle button -->
+            <button id="toggle-filters" class="filter-toggle">
+              <i class="fas fa-filter"></i> Filters
+            </button>
+          </div>
+
+          <!-- Filters area (hidden by default) -->
+          <div id="search-filters" class="search-filters" style="display: none">
+            <div class="filter-row">
+              <div class="filter-group">
+                <label for="filter-collection">Collection:</label>
+                <select id="filter-collection" class="filter-select">
+                  <option value="">All Collections</option>
+                  <!-- Will be populated dynamically -->
+                </select>
+              </div>
+
+              <div class="filter-group">
+                <label>Year Range:</label>
+                <div class="range-inputs">
+                  <input type="number" id="min-year" placeholder="Min Year" />
+                  <span>to</span>
+                  <input type="number" id="max-year" placeholder="Max Year" />
+                </div>
+              </div>
+
+              <div class="filter-group">
+                <label>Price Range:</label>
+                <div class="range-inputs">
+                  <input
+                    type="number"
+                    id="min-value"
+                    placeholder="Min Value"
+                    step="0.01"
+                  />
+                  <span>to</span>
+                  <input
+                    type="number"
+                    id="max-value"
+                    placeholder="Max Value"
+                    step="0.01"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div class="filter-actions">
+              <button id="apply-filters" class="btn">Apply Filters</button>
+              <button id="clear-filters" class="btn btn-secondary">
+                Clear
+              </button>
+            </div>
+          </div>
+
+          <!-- Search results area -->
+          <div id="search-results" class="search-results">
+            <p class="no-results">
+              Enter a search term or use filters to find items
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-md-6">
+      <div class="stats-container">
+        <div class="stats-card" id="total-value">
+          <h4>Total Value in Collectibles</h4>
+          <div class="card-content">
+            <select class="collection-filter" id="value-filter">
+              <option value="">All Collections</option>
+            </select>
+            <p><span id="value-amount">Loading...</span></p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-6">
+      <!-- Quick Actions Card -->
+      <div class="stats-card" id="quick-actions">
+        <h4>Quick Actions</h4>
+        <div class="card-content">
+          <div class="quick-actions-grid">
+            <button id="create-collection-btn" class="action-btn">
+              <i class="action-icon">+</i>
+              <span>Create Collection</span>
+            </button>
+            <button id="edit-collection-btn" class="action-btn">
+              <i class="action-icon">✎</i>
+              <span>Edit Collection</span>
+            </button>
+            <button id="add-item-btn" class="action-btn">
+              <i class="action-icon">➕</i>
+              <span>Add Item</span>
+            </button>
+            <button id="delete-collection-btn" class="action-btn danger">
+              <i class="action-icon">🗑️</i>
+              <span>Delete Collection</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-md-12">
+      <div class="stats-card" id="top-items">
+        <h4>Most Valuable Items</h4>
+        <div class="card-content">
+          <select class="collection-filter" id="items-filter">
+            <option value="">All Collections</option>
+          </select>
+          <ul id="valuable-items-list">
+            <li class="loading">Loading valuable items...</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-md-6">
+      <!-- Wealth Split Card -->
+      <div class="stats-card" id="wealth-split">
+        <h4 class="wealth-split-title">Wealth Split</h4>
+        <div class="card-content">
+          <div class="chart-container" id="wealth-split-chart">
+            <div class="chart-loading-overlay">Loading chart data...</div>
+            <canvas id="wealth-split-canvas"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-6">
+      <!-- Collection Evolution Card -->
+      <div class="stats-card" id="evolution-chart">
+        <h4 class="evolution-chart-title">Collection Evolution Over Time</h4>
+        <div class="filter-container">
+          <select id="evolution-metric" class="collection-filter">
+            <option value="items">Number of Items</option>
+            <option value="amount">Total Value</option>
+          </select>
+          <select id="evolution-collection" class="collection-filter">
+            <option value="all">All Collections</option>
+          </select>
+        </div>
+        <div class="card-content">
+          <div class="chart-container" id="evolution-chart-container">
+            <div class="chart-loading-overlay">Loading chart data...</div>
+            <canvas id="evolution-chart-canvas"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Collection Modal -->
+  <div id="create-collection-modal" class="modal">
+    <div class="modal-content">
+      <span class="close-btn">&times;</span>
+      <h3>Create New Collection</h3>
+      <form id="create-collection-form">
+        <div class="form-group">
+          <label for="collection-name">Collection Name:</label>
+          <input
+            type="text"
+            id="collection-name"
+            name="collection_name"
+            required
+          />
+        </div>
+        <button type="submit" class="btn">Create Collection</button>
+      </form>
+      <div id="collection-form-status"></div>
+    </div>
+  </div>
+
+  <!-- Edit Collection Modal -->
+  <div id="edit-collection-modal" class="modal">
+    <div class="modal-content">
+      <span class="close-btn">&times;</span>
+      <h3>Edit Collection</h3>
+      <div class="collection-selector">
+        <label for="collection-to-edit">Select Collection:</label>
+        <select id="collection-to-edit">
+          <!-- Will be populated dynamically -->
+        </select>
+      </div>
+      <form id="edit-collection-form">
+        <input type="hidden" id="edit-collection-id" name="collection_id" />
+        <div class="form-group">
+          <label for="new-collection-name">New Collection Name:</label>
+          <input
+            type="text"
+            id="new-collection-name"
+            name="new_name"
+            required
+          />
+        </div>
+        <button type="submit" class="btn">Save Changes</button>
+      </form>
+      <div id="edit-collection-form-status"></div>
+    </div>
+  </div>
+
+  <!-- Add Item Modal -->
+  <div id="add-item-modal" class="modal">
+    <div class="modal-content">
+      <span class="close-btn">&times;</span>
+      <h3>Add New Item</h3>
+      <form id="add-item-form">
+        <div class="form-group">
+          <label for="add-collection-name">Collection:</label>
+          <select id="add-collection-name" name="collection_name" required>
+            <!-- Will be populated dynamically -->
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="add-item-name">Item Name:</label>
+          <input type="text" id="add-item-name" name="name" required />
+        </div>
+        <div class="form-group">
+          <label for="add-item-year">Year:</label>
+          <input type="number" id="add-item-year" name="year" required />
+        </div>
+        <div class="form-group">
+          <label for="add-item-condition">Condition:</label>
+          <select id="add-item-condition" name="condition" required>
+            <option value="Mint">Mint</option>
+            <option value="Near Mint">Near Mint</option>
+            <option value="Excellent">Excellent</option>
+            <option value="Good">Good</option>
+            <option value="Fair">Fair</option>
+            <option value="Poor">Poor</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="add-item-value">Value ($):</label>
+          <input
+            type="number"
+            id="add-item-value"
+            name="value"
+            step="0.01"
+            min="0"
+            required
+          />
+        </div>
+        <div class="form-group">
+          <label for="add-item-description">Description:</label>
+          <textarea
+            id="add-item-description"
+            name="description"
+            rows="3"
+          ></textarea>
+        </div>
+        <button type="submit" class="btn">Add Item</button>
+      </form>
+      <div id="add-item-form-status"></div>
+    </div>
+  </div>
+
+  <!-- Edit Item Modal -->
+  <div id="editItemModal" class="modal">
+    <div class="modal-content">
+      <span class="close-btn">&times;</span>
+      <h3>Edit Item</h3>
+      <form id="edit-item-form">
+        <input type="hidden" id="edit-item-id" name="item_id" />
+        <div class="form-group">
+          <label for="edit-collection">Collection:</label>
+          <select id="edit-collection" name="collection_name" required>
+            <!-- Will be populated dynamically -->
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="edit-item-name">Item Name:</label>
+          <input type="text" id="edit-item-name" name="name" required />
+        </div>
+        <div class="form-group">
+          <label for="edit-item-year">Year:</label>
+          <input type="number" id="edit-item-year" name="year" required />
+        </div>
+        <div class="form-group">
+          <label for="edit-item-condition">Condition:</label>
+          <select id="edit-item-condition" name="condition" required>
+            <option value="Mint">Mint</option>
+            <option value="Near Mint">Near Mint</option>
+            <option value="Excellent">Excellent</option>
+            <option value="Good">Good</option>
+            <option value="Fair">Fair</option>
+            <option value="Poor">Poor</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="edit-item-value">Value ($):</label>
+          <input
+            type="number"
+            id="edit-item-value"
+            name="value"
+            step="0.01"
+            min="0"
+            required
+          />
+        </div>
+        <div class="form-group">
+          <label for="edit-item-description">Description:</label>
+          <textarea
+            id="edit-item-description"
+            name="description"
+            rows="3"
+          ></textarea>
+        </div>
+        <button type="submit" class="btn">Update Item</button>
+      </form>
+      <div id="edit-item-form-status"></div>
+    </div>
+  </div>
+
+  <!-- Delete Item Confirmation Modal -->
+  <div id="delete-item-modal" class="modal">
+    <div class="modal-content">
+      <span class="close-btn">&times;</span>
+      <h3>Delete Item</h3>
+      <p>
+        Are you sure you want to delete "<span id="delete-item-name"></span>"
+        from "<span id="delete-item-collection"></span>"?
+      </p>
+      <p class="delete-warning">Warning: This action cannot be undone.</p>
+      <div class="form-actions">
+        <button id="cancel-delete-item" class="btn btn-cancel">Cancel</button>
+        <button id="confirm-delete-item" class="btn btn-delete">
+          Delete Item
+        </button>
+      </div>
+      <div id="delete-item-status"></div>
+    </div>
+  </div>
+
+  <!-- Delete Collection Confirmation Modal -->
+  <div id="delete-collection-modal" class="modal">
+    <div class="modal-content">
+      <span class="close-btn">&times;</span>
+      <h3>Delete Collection</h3>
+      <div class="collection-selector">
+        <label for="collection-to-delete">Select Collection:</label>
+        <select id="collection-to-delete">
+          <!-- Will be populated dynamically -->
+        </select>
+      </div>
+      <p class="delete-warning">
+        Warning: This will delete the collection and all its items. This action
+        cannot be undone.
+      </p>
+      <div class="form-actions">
+        <button id="cancel-delete-collection" class="btn btn-cancel">
+          Cancel
+        </button>
+        <button id="confirm-delete-collection" class="btn btn-delete">
+          Delete Collection
+        </button>
+      </div>
+      <div id="delete-collection-status"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    // Simple state object for the dashboard
+    const state = {
+      selectedCollection: null,
+    };
+
+    // Fetch initial data
+    fetchAnalytics(null, false);
+    setupEventListeners();
+    checkUnassignedItems();
+
+    // Set up main event listeners
+    function setupEventListeners() {
+      // Quick action buttons
+      const createCollectionBtn = document.getElementById(
+        "create-collection-btn"
+      );
+      if (createCollectionBtn) {
+        createCollectionBtn.addEventListener("click", function () {
+          const modal = document.getElementById("create-collection-modal");
+          if (modal) modal.style.display = "block";
+        });
+      }
+
+      const editCollectionBtn = document.getElementById("edit-collection-btn");
+      if (editCollectionBtn) {
+        editCollectionBtn.addEventListener("click", async function () {
+          const modal = document.getElementById("edit-collection-modal");
+          if (modal) {
+            modal.style.display = "block";
+            await populateCollectionDropdown("collection-to-edit");
+
+            // Add change event listener to the dropdown
+            const collectionDropdown =
+              document.getElementById("collection-to-edit");
+            if (collectionDropdown) {
+              // Initial update on load
+              const newNameInput = document.getElementById(
+                "new-collection-name"
+              );
+              if (collectionDropdown.value && newNameInput) {
+                newNameInput.value = collectionDropdown.value;
+              }
+
+              // Update on selection change
+              collectionDropdown.addEventListener("change", function () {
+                const newNameInput = document.getElementById(
+                  "new-collection-name"
+                );
+                if (newNameInput) {
+                  newNameInput.value = this.value;
+                }
+              });
+            }
+          }
+        });
+      }
+
+      const addItemBtn = document.getElementById("add-item-btn");
+      if (addItemBtn) {
+        addItemBtn.addEventListener("click", async function () {
+          const modal = document.getElementById("add-item-modal");
+          if (modal) {
+            modal.style.display = "block";
+            await populateCollectionDropdown("add-collection-name");
+          }
+        });
+      }
+
+      const deleteCollectionBtn = document.getElementById(
+        "delete-collection-btn"
+      );
+      if (deleteCollectionBtn) {
+        deleteCollectionBtn.addEventListener("click", async function () {
+          const modal = document.getElementById("delete-collection-modal");
+          if (modal) {
+            modal.style.display = "block";
+            await populateCollectionDropdown("collection-to-delete");
+          }
+        });
+      }
+
+      // Setup confirm delete collection button
+      const confirmDeleteCollectionBtn = document.getElementById(
+        "confirm-delete-collection"
+      );
+      if (confirmDeleteCollectionBtn) {
+        confirmDeleteCollectionBtn.addEventListener("click", function () {
+          deleteSelectedCollection();
+        });
+      }
+
+      // Setup cancel delete collection button
+      const cancelDeleteCollectionBtn = document.getElementById(
+        "cancel-delete-collection"
+      );
+      if (cancelDeleteCollectionBtn) {
+        cancelDeleteCollectionBtn.addEventListener("click", function () {
+          const modal = document.getElementById("delete-collection-modal");
+          if (modal) modal.style.display = "none";
+        });
+      }
+
+      // Set up close buttons for all modals
+      const closeButtons = document.querySelectorAll(".close-btn");
+      closeButtons.forEach((btn) => {
+        btn.addEventListener("click", function () {
+          const modal = this.closest(".modal");
+          if (modal) modal.style.display = "none";
+        });
+      });
+
+      // Value filter change handler
+      const valueFilter = document.getElementById("value-filter");
+      if (valueFilter) {
+        valueFilter.addEventListener("change", function () {
+          fetchAnalytics("total-value", false, this.value);
+        });
+      }
+
+      // Collection filter for evolution chart
+      const evolutionFilter = document.getElementById("evolution-collection");
+      if (evolutionFilter) {
+        evolutionFilter.addEventListener("change", function () {
+          fetchAnalytics("evolution-chart", false, null, null, this.value);
+        });
+      }
+
+      // Items filter for valuable items section
+      const itemsFilter = document.getElementById("items-filter");
+      if (itemsFilter) {
+        itemsFilter.addEventListener("change", function () {
+          fetchAnalytics("top-items", false, null, this.value);
+        });
+      }
+
+      // Metric selector for evolution chart
+      const metricSelector = document.getElementById("evolution-metric");
+      if (metricSelector) {
+        metricSelector.addEventListener("change", function () {
+          if (window.evolutionState && window.evolutionState.data) {
+            updateEvolutionGraph(window.evolutionState.data);
+          }
+        });
+      }
+
+      // Add retry button event listener if it exists
+      const retryBtn = document.getElementById("retry-analytics");
+      if (retryBtn) {
+        retryBtn.addEventListener("click", function () {
+          fetchAnalytics(
+            valueFilter ? valueFilter.value || null : null,
+            itemsFilter ? itemsFilter.value || null : null,
+            evolutionFilter ? evolutionFilter.value || null : null
+            // No target section - update everything
+          );
+        });
+      }
+
+      // Export and close buttons for collection details
+      const exportBtn = document.getElementById("export-collection-btn");
+      if (exportBtn) {
+        exportBtn.addEventListener("click", exportCollection);
+      }
+
+      const closeDetailBtn = document.querySelector(".close-detail-btn");
+      if (closeDetailBtn) {
+        closeDetailBtn.addEventListener("click", closeCollectionDetails);
+      }
+
+      // Setup form submissions
+      setupFormHandlers();
+
+      // Set up search and filters
+      setupSearchAndFilters();
+    }
+
+    // Search and filter functionality
+    function setupSearchAndFilters() {
+      // Get elements
+      const searchButton = document.getElementById("search-button");
+      const toggleFiltersBtn = document.getElementById("toggle-filters");
+      const filtersArea = document.getElementById("search-filters");
+      const applyFiltersBtn = document.getElementById("apply-filters");
+      const clearFiltersBtn = document.getElementById("clear-filters");
+      const searchQuery = document.getElementById("search-query");
+      const resultsArea = document.getElementById("search-results");
+
+      // Toggle filters visibility
+      toggleFiltersBtn.addEventListener("click", function () {
+        filtersArea.style.display =
+          filtersArea.style.display === "none" ? "block" : "none";
+      });
+
+      // Populate collection dropdown
+      populateCollectionDropdown("filter-collection");
+
+      // Handle search button click
+      searchButton.addEventListener("click", function () {
+        performSearch();
+      });
+
+      // Handle Enter key in search box
+      searchQuery.addEventListener("keypress", function (e) {
+        if (e.key === "Enter") {
+          performSearch();
+        }
+      });
+
+      // Apply filters button
+      applyFiltersBtn.addEventListener("click", function () {
+        performSearch();
+      });
+
+      // Clear filters button
+      clearFiltersBtn.addEventListener("click", function () {
+        document.getElementById("filter-collection").value = "";
+        document.getElementById("min-year").value = "";
+        document.getElementById("max-year").value = "";
+        document.getElementById("min-value").value = "";
+        document.getElementById("max-value").value = "";
+        searchQuery.value = "";
+        resultsArea.innerHTML =
+          '<p class="no-results">Enter a search term or use filters to find items</p>';
+      });
+
+      // Main search function
+      async function performSearch() {
+        // Show loading state
+        resultsArea.innerHTML = '<p class="loading">Searching items...</p>';
+
+        // Build query URL with all parameters
+        let url = "/api/collection/search?";
+
+        // Add search query if provided
+        const query = searchQuery.value.trim();
+        if (query) {
+          url += `query=${encodeURIComponent(query)}&`;
+        }
+
+        // Add collection filter if selected
+        const collection = document.getElementById("filter-collection").value;
+        if (collection) {
+          url += `collection_name=${encodeURIComponent(collection)}&`;
+        }
+
+        // Add year range if provided
+        const minYear = document.getElementById("min-year").value;
+        if (minYear) {
+          url += `min_year=${encodeURIComponent(minYear)}&`;
+        }
+
+        const maxYear = document.getElementById("max-year").value;
+        if (maxYear) {
+          url += `max_year=${encodeURIComponent(maxYear)}&`;
+        }
+
+        // Add value range if provided
+        const minValue = document.getElementById("min-value").value;
+        if (minValue) {
+          url += `min_value=${encodeURIComponent(minValue)}&`;
+        }
+
+        const maxValue = document.getElementById("max-value").value;
+        if (maxValue) {
+          url += `max_value=${encodeURIComponent(maxValue)}&`;
+        }
+
+        try {
+          const response = await fetch(url);
+          const data = await response.json();
+          displaySearchResults(data);
+        } catch (error) {
+          console.error("Error searching items:", error);
+          resultsArea.innerHTML =
+            '<p class="error">Failed to search items. Please try again.</p>';
+        }
+      }
+
+      // Make performSearch available globally
+      window.performSearch = performSearch;
+
+      // Display search results
+      function displaySearchResults(data) {
+        if (!data || !data.collection || data.collection.length === 0) {
+          resultsArea.innerHTML =
+            '<p class="no-results">No items found matching your criteria</p>';
+          return;
+        }
+
+        // Sort items by value (high to low)
+        const sortedItems = [...data.collection].sort(
+          (a, b) => b.value - a.value
+        );
+
+        let html =
+          '<div class="search-results-count">' +
+          sortedItems.length +
+          " items found</div>";
+
+        html += '<ul class="search-results-list">';
+
+        sortedItems.forEach((item) => {
+          html += `
+            <li class="search-result-item">
+              <div class="result-main">
+                <div class="result-name">${item.name}</div>
+                <div class="result-value">$${item.value.toLocaleString()}</div>
+              </div>
+              <div class="result-details">
+                <span class="result-collection">${item.collection_name}</span>
+                <span class="result-year">Year: ${item.year}</span>
+                <span class="result-condition">Condition: ${
+                  item.condition
+                }</span>
+              </div>
+              ${
+                item.description
+                  ? `<div class="result-description">${item.description}</div>`
+                  : ""
+              }
+              <div class="result-actions">
+                <button class="btn btn-sm btn-outline-primary edit-item-btn" data-item-id="${
+                  item.item_id
+                }" data-item-name="${item.name}" data-item-collection="${
+            item.collection_name
+          }" data-item-year="${item.year}" data-item-condition="${
+            item.condition
+          }" data-item-value="${item.value}" data-item-description="${
+            item.description || ""
+          }">
+                  <i class="fas fa-edit"></i> Edit
+                </button>
+                <button class="btn btn-sm btn-outline-danger delete-item-btn" data-item-id="${
+                  item.item_id
+                }" data-item-name="${item.name}" data-item-collection="${
+            item.collection_name
+          }">
+                  <i class="fas fa-trash"></i> Delete
+                </button>
+              </div>
+            </li>
+          `;
+        });
+
+        html += "</ul>";
+
+        resultsArea.innerHTML = html;
+
+        // Add event listeners to the edit and delete buttons
+        document.querySelectorAll(".edit-item-btn").forEach((button) => {
+          button.addEventListener("click", function () {
+            const itemId = this.getAttribute("data-item-id");
+            const itemName = this.getAttribute("data-item-name");
+            const collectionName = this.getAttribute("data-item-collection");
+            const itemYear = this.getAttribute("data-item-year");
+            const itemCondition = this.getAttribute("data-item-condition");
+            const itemValue = this.getAttribute("data-item-value");
+            const itemDescription = this.getAttribute("data-item-description");
+
+            // Open edit modal and populate with item data
+            const editItemModal = document.getElementById("editItemModal");
+            if (editItemModal) {
+              // Populate form fields
+              const form = editItemModal.querySelector("form");
+              if (form) {
+                form.querySelector("#edit-item-id").value = itemId;
+                form.querySelector("#edit-item-name").value = itemName;
+
+                // Populate collections dropdown
+                const collectionsDropdown =
+                  form.querySelector("#edit-collection");
+                // Clear existing options
+                collectionsDropdown.innerHTML = "";
+
+                // Fetch all collections and populate the dropdown
+                fetch("/api/collections")
+                  .then((response) => response.json())
+                  .then((data) => {
+                    if (
+                      data &&
+                      data.collections &&
+                      Array.isArray(data.collections)
+                    ) {
+                      data.collections.forEach((collection) => {
+                        const option = document.createElement("option");
+                        option.value =
+                          collection.name || collection.collection_name;
+                        option.textContent =
+                          collection.name || collection.collection_name;
+                        if (
+                          collection.name === collectionName ||
+                          collection.collection_name === collectionName
+                        ) {
+                          option.selected = true;
+                        }
+                        collectionsDropdown.appendChild(option);
+                      });
+                    }
+                  })
+                  .catch((error) => {
+                    console.error("Error fetching collections:", error);
+                    // Add the current collection as fallback
+                    const option = document.createElement("option");
+                    option.value = collectionName;
+                    option.textContent = collectionName;
+                    option.selected = true;
+                    collectionsDropdown.appendChild(option);
+                  });
+
+                form.querySelector("#edit-item-year").value = itemYear;
+                form.querySelector("#edit-item-condition").value =
+                  itemCondition;
+                form.querySelector("#edit-item-value").value = itemValue;
+                form.querySelector("#edit-item-description").value =
+                  itemDescription;
+              }
+
+              // Add close button functionality
+              const closeBtn = editItemModal.querySelector(".close-btn");
+              if (closeBtn) {
+                closeBtn.addEventListener("click", function () {
+                  editItemModal.style.display = "none";
+                });
+              }
+
+              // Show the modal using vanilla JS
+              editItemModal.style.display = "block";
+            } else {
+              console.error("Edit item modal not found");
+            }
+          });
+        });
+
+        document.querySelectorAll(".delete-item-btn").forEach((button) => {
+          button.addEventListener("click", function () {
+            const itemId = this.getAttribute("data-item-id");
+            const itemName = this.getAttribute("data-item-name");
+            const collectionName = this.getAttribute("data-item-collection");
+
+            // Show the delete modal instead of confirm
+            const deleteItemModal =
+              document.getElementById("delete-item-modal");
+            if (deleteItemModal) {
+              // Populate the modal
+              document.getElementById("delete-item-name").textContent =
+                itemName;
+              document.getElementById("delete-item-collection").textContent =
+                collectionName;
+
+              // Clear any previous status
+              document.getElementById("delete-item-status").textContent = "";
+
+              // Set up event handlers for the modal buttons
+              const confirmButton = document.getElementById(
+                "confirm-delete-item"
+              );
+              const cancelButton =
+                document.getElementById("cancel-delete-item");
+              const closeBtn = deleteItemModal.querySelector(".close-btn");
+
+              // Remove any existing event listeners
+              const newConfirmButton = confirmButton.cloneNode(true);
+              confirmButton.parentNode.replaceChild(
+                newConfirmButton,
+                confirmButton
+              );
+              const newCancelButton = cancelButton.cloneNode(true);
+              cancelButton.parentNode.replaceChild(
+                newCancelButton,
+                cancelButton
+              );
+
+              // Function to hide the modal
+              const hideModal = function () {
+                deleteItemModal.style.display = "none";
+              };
+
+              // Add new event listeners
+              newConfirmButton.addEventListener("click", function () {
+                deleteItem(itemId, collectionName);
+
+                // Hide the modal after a delay
+                setTimeout(hideModal, 2000);
+              });
+
+              newCancelButton.addEventListener("click", hideModal);
+
+              // Also handle the close button
+              if (closeBtn) {
+                closeBtn.addEventListener("click", hideModal);
+              }
+
+              // Show the modal using vanilla JS
+              deleteItemModal.style.display = "block";
+            } else {
+              console.error("Delete item modal not found");
+            }
+          });
+        });
+      }
+    }
+
+    // Helper function to validate analytics data
+    function validateData(data) {
+      if (!data) {
+        console.error("Analytics data is empty or undefined");
+        return false;
+      }
+
+      // Check if we have at least one of the required data structures
+      const hasCollections =
+        data.collections && Array.isArray(data.collections);
+      const hasItems =
+        data.valuable_items && Array.isArray(data.valuable_items);
+      const hasEvolution =
+        data.evolution &&
+        ((data.evolution.years && Array.isArray(data.evolution.years)) ||
+          (data.evolution.dates && Array.isArray(data.evolution.dates)));
+
+      if (!hasCollections && !hasItems && !hasEvolution) {
+        console.error("Analytics data is missing required fields", data);
+        return false;
+      }
+
+      return true;
+    }
+
+    // Fetch analytics data with improved error handling
+    function fetchAnalytics(
+      target_section = null,
+      forceRefresh = false,
+      value_filter = null,
+      items_filter = null,
+      evolution_filter = null
+    ) {
+      console.log("Fetching analytics from:", "/api/collection/analytics");
+      console.log(
+        "Target section:",
+        target_section,
+        "Force refresh:",
+        forceRefresh
+      );
+
+      // When forcing a refresh, we want to refresh all sections
+      if (forceRefresh) {
+        target_section = null;
+      }
+
+      // Show loading state only for the target section
+      if (target_section) {
+        const targetElement = document.getElementById(target_section);
+        if (targetElement) {
+          const contentElement = targetElement.querySelector(".card-content");
+          if (contentElement) {
+            if (!contentElement.querySelector(".loading-container")) {
+              const loading = document.createElement("div");
+              loading.className = "loading-container";
+              loading.innerHTML = '<p class="loading">Loading...</p>';
+              contentElement.appendChild(loading);
+            }
+          }
+        }
+      } else {
+        // Show loading state for all sections if no target specified
+        document.querySelectorAll(".card-content").forEach((el) => {
+          if (!el.querySelector(".loading-container")) {
+            const loading = document.createElement("div");
+            loading.className = "loading-container";
+            loading.innerHTML = '<p class="loading">Loading...</p>';
+            el.appendChild(loading);
+          }
+        });
+      }
+
+      // Build query parameters
+      let params = new URLSearchParams();
+      if (value_filter) params.append("value_filter", value_filter);
+      if (items_filter) params.append("items_filter", items_filter);
+      if (evolution_filter) params.append("evolution_filter", evolution_filter);
+      if (target_section) params.append("target_section", target_section);
+
+      const url = `/api/collection/analytics${
+        params.toString() ? "?" + params.toString() : ""
+      }`;
+
+      // Fetch data with timeout
+      const fetchPromise = fetch(url);
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Request timed out")), 10000)
+      );
+
+      Promise.race([fetchPromise, timeoutPromise])
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+          }
+          return response.json();
+        })
+        .then((data) => {
+          console.log("Analytics data received:", data);
+
+          if (data.error) {
+            console.error("API returned error:", data.error);
+            handleAnalyticsError(data.error, target_section);
+            return;
+          }
+
+          // Update UI with data
+          updateDashboard(data, target_section);
+        })
+        .catch((error) => {
+          console.error("Error fetching analytics:", error);
+          handleAnalyticsError(error.message, target_section);
+        });
+    }
+
+    // Handle analytics errors
+    function handleAnalyticsError(errorMsg, targetSection = null) {
+      if (targetSection) {
+        // Remove loading indicators for the specific section
+        const targetElement = document.getElementById(targetSection);
+        if (targetElement) {
+          targetElement
+            .querySelectorAll(".loading-container, .loading")
+            .forEach((el) => {
+              el.remove();
+            });
+
+          // Show error message in the specific section
+          const contentElement = targetElement.querySelector(".card-content");
+          if (contentElement) {
+            const errorElement = document.createElement("div");
+            errorElement.className = "error-message";
+            errorElement.textContent = "Failed to load data";
+
+            // Clear existing content except for filters
+            Array.from(contentElement.children).forEach((child) => {
+              if (!child.classList.contains("filter-container")) {
+                child.remove();
+              }
+            });
+
+            contentElement.appendChild(errorElement);
+          }
+        }
+      } else {
+        // Remove all loading indicators if no specific target
+        document
+          .querySelectorAll(".loading-container, .loading")
+          .forEach((el) => {
+            el.remove();
+          });
+
+        // Show error messages in each card
+        document.querySelectorAll(".card-content").forEach((el) => {
+          const errorElement = document.createElement("div");
+          errorElement.className = "error-message";
+          errorElement.textContent = "Failed to load data";
+
+          // Clear existing content except for filters
+          Array.from(el.children).forEach((child) => {
+            if (!child.classList.contains("filter-container")) {
+              child.remove();
+            }
+          });
+
+          el.appendChild(errorElement);
+        });
+      }
+
+      // Enable retry button if present
+      const retryBtn = document.getElementById("retry-analytics");
+      if (retryBtn) {
+        retryBtn.style.display = "block";
+      }
+    }
+
+    // Update dashboard with analytics data
+    function updateDashboard(data, targetSection = null) {
+      if (!validateData(data)) {
+        handleAnalyticsError("Invalid data structure", targetSection);
+        return;
+      }
+
+      if (targetSection) {
+        // Update only the specific section
+        console.log("Updating only section:", targetSection);
+
+        // Remove loading indicators for this section
+        const targetElement = document.getElementById(targetSection);
+        if (targetElement) {
+          targetElement
+            .querySelectorAll(
+              ".loading-container, .loading, .chart-loading-overlay"
+            )
+            .forEach((el) => {
+              if (el.classList.contains("chart-loading-overlay")) {
+                el.style.display = "none";
+              } else {
+                el.remove();
+              }
+            });
+        }
+
+        // Update the specific section
+        switch (targetSection) {
+          case "total-value":
+            updateTotalValue(data);
+            break;
+          case "valuable-collection":
+            updateMostValuableCollection(data);
+            break;
+          case "top-items":
+            updateTopItems(data);
+            break;
+          case "collection-distribution":
+            updateCollectionDistribution(data);
+            break;
+          case "wealth-split":
+            updateWealthSplit(data);
+            break;
+          case "evolution-chart":
+            updateEvolutionGraph(data);
+            updateCollectionFilters(data, ["evolution-collection"]);
+            break;
+          default:
+            // If section not recognized, update all
+            updateAllSections(data);
+        }
+      } else {
+        // Update all sections
+        updateAllSections(data);
+      }
+    }
+
+    // Update all dashboard sections
+    function updateAllSections(data) {
+      // Remove ALL loading indicators and overlays
+      document
+        .querySelectorAll(
+          ".loading-container, .loading, .chart-loading-overlay"
+        )
+        .forEach((el) => {
+          if (el.classList.contains("chart-loading-overlay")) {
+            el.style.display = "none";
+          } else {
+            el.remove();
+          }
+        });
+
+      // Update each section
+      updateTotalValue(data);
+      updateCollectionDistribution(data);
+      updateTopItems(data);
+      updateWealthSplit(data);
+      updateEvolutionGraph(data);
+
+      // Update collection filter dropdowns
+      updateCollectionFilters(data);
+    }
+
+    // Update the total value display
+    function updateTotalValue(data) {
+      const valueAmount = document.getElementById("value-amount");
+      const valueFilter = document.getElementById("value-filter");
+
+      if (!valueAmount) return;
+
+      // If no filter is applied or the filter is empty, use overall total
+      if (!valueFilter || !valueFilter.value) {
+        valueAmount.textContent = data.overall_total
+          ? data.overall_total.toLocaleString()
+          : "0";
+        return;
+      }
+
+      // If a specific collection is selected, find its total value
+      const selectedCollection = valueFilter.value;
+      if (
+        selectedCollection &&
+        data.collections &&
+        data.collections.length > 0
+      ) {
+        // Look for the matching collection
+        const collection = data.collections.find(
+          (c) => c.collection_name === selectedCollection
+        );
+
+        if (collection && collection.total_value) {
+          valueAmount.textContent = collection.total_value.toLocaleString();
+          return;
+        }
+
+        // If the collection exists but has no total_value or total_value is 0
+        if (collection) {
+          valueAmount.textContent = "0";
+          return;
+        }
+      }
+
+      // Fallback to overall total or 0
+      valueAmount.textContent = data.overall_total
+        ? data.overall_total.toLocaleString()
+        : "0";
+    }
+
+    // Update the collection distribution list
+    function updateCollectionDistribution(data) {
+      const distributionList = document.getElementById("distribution-list");
+      if (!distributionList) return;
+
+      if (!data || !data.collections || data.collections.length === 0) {
+        distributionList.innerHTML =
+          '<li class="no-data">No collections found</li>';
+        return;
+      }
+
+      // Deduplicate collections for the distribution list
+      // Use a Map to keep the highest value version of each collection name
+      const uniqueCollections = new Map();
+
+      data.collections.forEach((collection) => {
+        const name = collection.collection_name;
+        const nameLower = name.toLowerCase().trim();
+
+        // If this collection name wasn't encountered before, or has a higher value than previous one
+        if (
+          !uniqueCollections.has(nameLower) ||
+          (collection.total_value || 0) >
+            (uniqueCollections.get(nameLower).total_value || 0)
+        ) {
+          uniqueCollections.set(nameLower, collection);
+        }
+      });
+
+      // Convert back to array and sort by total value (high to low)
+      const deduplicatedCollections = Array.from(
+        uniqueCollections.values()
+      ).sort((a, b) => (b.total_value || 0) - (a.total_value || 0));
+
+      distributionList.innerHTML = deduplicatedCollections
+        .map(
+          (collection) => `
+        <li class="collection-item" data-collection="${
+          collection.collection_name
+        }">
+          <div>
+            <div>${collection.collection_name}</div>
+            <div class="item-count">${collection.count || 0} items</div>
+          </div>
+          <div class="item-value">$${(
+            collection.total_value || 0
+          ).toLocaleString()}</div>
+          </li>
+        `
+        )
+        .join("");
+
+      // Add click event listeners to show collection details
+      const collectionItems =
+        distributionList.querySelectorAll(".collection-item");
+      collectionItems.forEach((item) => {
+        item.addEventListener("click", function () {
+          const collectionName = this.dataset.collection;
+
+          // Check if this item is already selected (i.e., we're clicking the same collection again)
+          if (
+            this.classList.contains("selected") &&
+            state.selectedCollection === collectionName
+          ) {
+            // If already selected, remove the selected class and close the panel
+            this.classList.remove("selected");
+            state.selectedCollection = null;
+
+            // Hide the detail panel
+            const itemsPanel = document.getElementById(
+              "collection-items-panel"
+            );
+            if (itemsPanel) {
+              itemsPanel.classList.add("hidden");
+            }
+          } else {
+            // Otherwise, show the details for the newly clicked collection
+
+            // Remove selected class from all items
+            collectionItems.forEach((i) => i.classList.remove("selected"));
+
+            // Add selected class to clicked item
+            this.classList.add("selected");
+
+            // Show collection details
+            showCollectionDetails(collectionName);
+          }
+        });
+      });
+    }
+
+    // Function to update the top valuable items list
+    function updateTopItems(data) {
+      const itemsList = document.getElementById("valuable-items-list");
+      if (!itemsList) return;
+
+      if (!data || !data.valuable_items || data.valuable_items.length === 0) {
+        itemsList.innerHTML = '<li class="no-data">No items found</li>';
+        return;
+      }
+
+      itemsList.innerHTML = data.valuable_items
+        .map(
+          (item) => `
+        <li class="top-item">
+          <div>
+            <div>${item.name}</div>
+            <div class="item-collection">${item.collection_name}</div>
+          </div>
+          <div class="item-value">$${item.value.toLocaleString()}</div>
+          </li>
+        `
+        )
+        .join("");
+    }
+
+    // Function to update the most valuable collection section
+    function updateMostValuableCollection(data) {
+      const container = document.getElementById("valuable-collection-details");
+      if (!container) return;
+
+      if (!data || !data.collections || !data.collections.length) {
+        container.innerHTML = '<p class="no-data">No collections found</p>';
+        return;
+      }
+
+      // Sort collections by total_value in descending order
+      const sortedCollections = [...data.collections].sort(
+        (a, b) => (b.total_value || 0) - (a.total_value || 0)
+      );
+
+      // Get the collection with the highest value
+      const collection = sortedCollections[0];
+
+      if (!collection || !collection.collection_name) {
+        container.innerHTML = '<p class="no-data">No collections found</p>';
+        return;
+      }
+
+      container.innerHTML = `
+        <div class="collection-name">${collection.collection_name}</div>
+        <div class="collection-value">Value: $${(
+          collection.total_value || 0
+        ).toLocaleString()}</div>
+        <div class="collection-count">${collection.count || 0} items</div>
+        ${
+          collection.top_item
+            ? `<div class="collection-top-item">
+            Most valuable: ${
+              collection.top_item.name
+            } ($${collection.top_item.value.toLocaleString()})
+          </div>`
+            : ""
+        }
+      `;
+    }
+
+    // Update the wealth split (pie chart)
+    function updateWealthSplit(data) {
+      if (!data || !data.collections || data.collections.length === 0) {
+        document.getElementById("wealth-split-chart").innerHTML =
+          '<div class="error-message">No collection data available</div>';
+        return;
+      }
+
+      // Show loading message while preparing data
+      document.getElementById("wealth-split-chart").innerHTML =
+        '<div class="loading">Loading chart data...</div>';
+      console.log(
+        "Updating wealth split with data:",
+        data.collections.length,
+        "collections"
+      );
+
+      try {
+        // Deduplicate collections by normalized name
+        const uniqueCollections = new Map();
+
+        data.collections.forEach((collection) => {
+          const name = collection.collection_name;
+          const nameLower = name.toLowerCase().trim();
+
+          // If this collection name wasn't encountered before, or has a higher value than previous one
+          if (
+            !uniqueCollections.has(nameLower) ||
+            (collection.total_value || 0) >
+              (uniqueCollections.get(nameLower).total_value || 0)
+          ) {
+            uniqueCollections.set(nameLower, collection);
+          }
+        });
+
+        // Convert back to array and get top collections by value
+        const deduplicatedCollections = Array.from(
+          uniqueCollections.values()
+        ).sort((a, b) => (b.total_value || 0) - (a.total_value || 0));
+
+        // Show only top 5 collections for readability
+        const topCollections = deduplicatedCollections.slice(0, 5);
+
+        // Create data for the chart
+        const labels = [];
+        const values = [];
+
+        topCollections.forEach((collection) => {
+          if (collection.collection_name && collection.total_value > 0) {
+            labels.push(collection.collection_name);
+            values.push(collection.total_value || 0);
+          }
+        });
+
+        if (labels.length === 0 || values.length === 0) {
+          document.getElementById("wealth-split-chart").innerHTML =
+            '<div class="error-message">No valid collection data to display</div>';
+          return;
+        }
+
+        // Create colors using golden ratio for even distribution
+        const colors = [];
+        const goldenRatio = 0.618033988749895;
+        let h = Math.random();
+
+        for (let i = 0; i < labels.length; i++) {
+          h = (h + goldenRatio) % 1;
+          const hue = h * 360;
+          colors.push(`hsl(${hue}, 70%, 60%)`);
+        }
+
+        // Clear the loading message
+        document.getElementById("wealth-split-chart").innerHTML = "";
+
+        // Create canvas element
+        const canvas = document.createElement("canvas");
+        canvas.id = "wealth-split-canvas";
+        document.getElementById("wealth-split-chart").appendChild(canvas);
+
+        // Get context and create chart
+        const ctx = canvas.getContext("2d");
+
+        // Check if there's an existing chart instance and destroy it
+        if (window.wealthChart) {
+          window.wealthChart.destroy();
+        }
+
+        // Create new chart instance
+        window.wealthChart = new Chart(ctx, {
+          type: "pie",
+          data: {
+            labels: labels,
+            datasets: [
+              {
+                data: values,
+                backgroundColor: colors,
+                borderWidth: 1,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            layout: {
+              padding: {
+                top: 10,
+                bottom: 10,
+                left: 10,
+                right: 10,
+              },
+            },
+            plugins: {
+              legend: {
+                position: "bottom",
+                labels: {
+                  boxWidth: 15,
+                  padding: 15,
+                  font: {
+                    size: 14, // Increased from 10 to 14
+                    weight: "bold",
+                  },
+                },
+              },
+              tooltip: {
+                titleFont: {
+                  size: 16,
+                },
+                bodyFont: {
+                  size: 14,
+                },
+                callbacks: {
+                  label: function (context) {
+                    const value = context.parsed;
+                    const total = context.dataset.data.reduce(
+                      (a, b) => a + b,
+                      0
+                    );
+                    const percentage = Math.round((value / total) * 100);
+                    return `$${value.toLocaleString()} (${percentage}%)`;
+                  },
+                },
+              },
+            },
+          },
+        });
+      } catch (error) {
+        console.error("Error creating wealth split chart:", error);
+        document.getElementById("wealth-split-chart").innerHTML =
+          '<div class="error-message">Failed to create chart: ' +
+          error.message +
+          "</div>";
+      }
+    }
+
+    // Function to update the evolution graph
+    function updateEvolutionGraph(data) {
+      // Get the container for error messages
+      const chartContainer = document.getElementById(
+        "evolution-chart-container"
+      );
+
+      // Check if data is available
+      if (!data || !data.evolution) {
+        if (chartContainer) {
+          chartContainer.innerHTML =
+            '<div class="error-message">No evolution data available</div>';
+        }
+        return;
+      }
+
+      // Store the data for reuse when switching metrics
+      window.evolutionState = window.evolutionState || {};
+      window.evolutionState.data = data;
+
+      try {
+        // Get the selected metric
+        const metricSelector = document.getElementById("evolution-metric");
+        const metric = metricSelector ? metricSelector.value : "items";
+        console.log("Selected metric:", metric);
+
+        // Determine if we use years or dates for labels
+        let labels = data.evolution.years || data.evolution.dates || [];
+
+        // Get values based on the selected metric
+        let values = [];
+        if (metric === "items") {
+          values = data.evolution.items || [];
+          console.log("Using items data:", values);
+        } else if (metric === "amount") {
+          values = data.evolution.amounts || [];
+          console.log("Using amounts data:", values);
+        }
+
+        // Ensure we have data to display
+        if (labels.length === 0 || values.length === 0) {
+          // Check if we have debug info to display a better message
+          let errorMessage = "No evolution data to display";
+
+          if (data.evolution.debug_info) {
+            if (data.evolution.debug_info.includes("Not enough items")) {
+              errorMessage =
+                "Add more items to see your collection evolve over time";
+            } else {
+              errorMessage = data.evolution.debug_info;
+            }
+          }
+
+          if (chartContainer) {
+            chartContainer.innerHTML = `<div class="error-message">${errorMessage}</div>`;
+          }
+          return;
+        }
+
+        // Ensure arrays are the same length
+        const minLength = Math.min(labels.length, values.length);
+        labels = labels.slice(0, minLength);
+        values = values.slice(0, minLength);
+
+        // Hide loading overlay
+        const loadingOverlay = document.querySelector(
+          "#evolution-chart .chart-loading-overlay"
+        );
+        if (loadingOverlay) {
+          loadingOverlay.style.display = "none";
+        }
+
+        // Get the canvas
+        const canvas = document.getElementById("evolution-chart-canvas");
+        if (!canvas) {
+          console.error("Evolution chart canvas not found");
+          return;
+        }
+
+        // Check if there's an existing chart instance and destroy it
+        if (window.evolutionChart) {
+          window.evolutionChart.destroy();
+        }
+
+        // Create new chart
+        const ctx = canvas.getContext("2d");
+        window.evolutionChart = new Chart(ctx, {
+          type: "line",
+          data: {
+            labels: labels,
+            datasets: [
+              {
+                label:
+                  metric === "items" ? "Number of Items" : "Total Amount Spent",
+                data: values,
+                borderColor: "rgba(75, 192, 192, 1)",
+                backgroundColor: "rgba(75, 192, 192, 0.2)",
+                borderWidth: 2,
+                fill: true,
+                tension: 0.4,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: {
+                display: true,
+                position: "top",
+              },
+              tooltip: {
+                callbacks: {
+                  label: function (context) {
+                    const value = context.raw;
+                    if (metric === "items") {
+                      return `Items: ${value}`;
+                    } else {
+                      return `Amount: $${value.toLocaleString()}`;
+                    }
+                  },
+                },
+              },
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                title: {
+                  display: true,
+                  text: metric === "items" ? "Number of Items" : "Amount ($)",
+                },
+              },
+              x: {
+                title: {
+                  display: true,
+                  text: "Year",
+                },
+              },
+            },
+          },
+        });
+
+        // Flag as initialized
+        window.evolutionState.initialized = true;
+      } catch (error) {
+        console.error("Error creating evolution chart:", error);
+        const container = document.getElementById("evolution-chart-container");
+        if (container) {
+          container.innerHTML =
+            '<div class="error-message">Failed to create chart: ' +
+            error.message +
+            "</div>";
+        }
+      }
+    }
+
+    // Function to update collection filters with current collections
+    function updateCollectionFilters(data, specificFilters = null) {
+      if (!data || !data.collections || !data.collections.length) return;
+
+      // Get all collection filter dropdowns, but exclude the metric selector
+      const filters = specificFilters
+        ? specificFilters
+            .map((id) => document.getElementById(id))
+            .filter((el) => el)
+        : document.querySelectorAll(
+            ".collection-filter:not(#evolution-metric)"
+          );
+
+      filters.forEach((filter) => {
+        // Store current value and first option
+        const currentValue = filter.value;
+        const firstOption = filter.options[0];
+
+        // Clear the filter
+        filter.innerHTML = "";
+
+        // Add back the first option (typically "All Collections")
+        filter.appendChild(firstOption);
+
+        // Keep track of collection names already added to avoid duplicates
+        const addedCollections = new Set();
+
+        // Add collection options
+        data.collections.forEach((collection) => {
+          // Skip if this collection name has already been added
+          if (addedCollections.has(collection.collection_name.toLowerCase())) {
+            return;
+          }
+
+          // Add to tracking set
+          addedCollections.add(collection.collection_name.toLowerCase());
+
+          // Create and add the option
+          const option = document.createElement("option");
+          option.value = collection.collection_name;
+          option.textContent = collection.collection_name;
+          filter.appendChild(option);
+        });
+
+        // Try to restore previous selection
+        if (currentValue) {
+          for (let i = 0; i < filter.options.length; i++) {
+            if (filter.options[i].value === currentValue) {
+              filter.selectedIndex = i;
+              break;
+            }
+          }
+        }
+      });
+    }
+
+    // Function to show collection details
+    function showCollectionDetails(collectionName) {
+      // Update state
+      state.selectedCollection = collectionName;
+
+      // Set the collection detail panel title
+      const titleElement = document.getElementById("collection-detail-title");
+      const itemsPanel = document.getElementById("collection-items-panel");
+
+      if (!titleElement || !itemsPanel) return;
+
+      titleElement.textContent = collectionName;
+      itemsPanel.classList.remove("hidden");
+
+      // Show loading state
+      const itemsList = document.getElementById("collection-items-list");
+      if (itemsList) {
+        itemsList.innerHTML = '<li class="loading">Loading items...</li>';
+      }
+
+      // Fetch items for this collection
+      fetchCollectionItems(collectionName);
+    }
+
+    // Function to fetch items for a specific collection
+    async function fetchCollectionItems(collectionName) {
+      try {
+        const response = await fetch(
+          `/api/collection/search?collection_name=${encodeURIComponent(
+            collectionName
+          )}`
+        );
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        displayCollectionItems(data.collection || []);
+      } catch (error) {
+        console.error("Error fetching collection items:", error);
+        const itemsList = document.getElementById("collection-items-list");
+        if (itemsList) {
+          itemsList.innerHTML = '<li class="error">Failed to load items</li>';
+        }
+      }
+    }
+
+    // Function to display collection items
+    function displayCollectionItems(items) {
+      const itemsList = document.getElementById("collection-items-list");
+      if (!itemsList) return;
+
+      if (!items.length) {
+        itemsList.innerHTML = `
+          <li class="no-data">
+            <p>This collection is empty.</p>
+            <p>Start building your collection by adding your first item!</p>
+            <button id="add-to-empty-collection" class="btn">Add Item</button>
+          </li>
+        `;
+
+        // Add event listener to the Add Item button
+        const addItemBtn = itemsList.querySelector("#add-to-empty-collection");
+        if (addItemBtn) {
+          addItemBtn.addEventListener("click", openAddItemModal);
+        }
+        return;
+      }
+
+      // Sort items by value (high to low)
+      const sortedItems = [...items].sort((a, b) => b.value - a.value);
+
+      itemsList.innerHTML = sortedItems
+        .map(
+          (item) => `
+        <li class="collection-item-detail" data-item-id="${item.item_id}">
+          <div class="item-detail-row">
+            <span class="item-detail-name">${item.name}</span>
+            <span class="item-detail-value">$${item.value.toLocaleString()}</span>
+            <div class="item-actions">
+              <button class="edit-item-btn" title="Edit item" data-item-id="${
+                item.item_id
+              }"
+                data-item-name="${item.name}"
+                data-item-year="${item.year}"
+                data-item-condition="${item.condition}"
+                data-item-value="${item.value}"
+                data-item-description="${item.description || ""}"
+                data-collection-name="${item.collection_name}">Edit</button>
+              <button class="delete-item-btn" title="Delete item" data-item-id="${
+                item.item_id
+              }" data-item-name="${item.name}">&times;</button>
+            </div>
+          </div>
+          <div class="item-detail-row secondary">
+            <span class="item-detail-year">Year: ${item.year}</span>
+            <span class="item-detail-condition">Condition: ${
+              item.condition
+            }</span>
+          </div>
+          ${
+            item.description
+              ? `<div class="item-description">${item.description}</div>`
+              : ""
+          }
+        </li>
+      `
+        )
+        .join("");
+
+      // Add event listeners to buttons
+      addItemButtonEventListeners(itemsList);
+    }
+
+    // Function to add event listeners to item buttons
+    function addItemButtonEventListeners(container) {
+      // Add event listeners to delete buttons
+      const deleteButtons = container.querySelectorAll(".delete-item-btn");
+      deleteButtons.forEach((btn) => {
+        btn.addEventListener("click", function (e) {
+          e.stopPropagation(); // Prevent click from bubbling up
+          const itemId = this.dataset.itemId;
+          const itemName = this.dataset.itemName;
+          showDeleteConfirmation(itemId, itemName);
+        });
+      });
+
+      // Add event listeners to edit buttons
+      const editButtons = container.querySelectorAll(".edit-item-btn");
+      editButtons.forEach((btn) => {
+        btn.addEventListener("click", function (e) {
+          e.stopPropagation(); // Prevent click from bubbling up
+
+          // Get data from data attributes
+          const itemData = {
+            item_id: this.dataset.itemId,
+            name: this.dataset.itemName,
+            year: this.dataset.itemYear,
+            condition: this.dataset.itemCondition,
+            value: this.dataset.itemValue,
+            description: this.dataset.itemDescription,
+            collection_name: this.dataset.collectionName,
+          };
+
+          openEditItemModal(itemData);
+        });
+      });
+    }
+
+    // Function for opening Add Item modal when clicked from empty collection view
+    function openAddItemModal() {
+      // Get the selected collection name from the state
+      const selectedCollection = state.selectedCollection;
+
+      // Open the modal
+      const addItemModal = document.getElementById("add-item-modal");
+      if (addItemModal) {
+        addItemModal.style.display = "block";
+
+        // Populate the collections dropdown
+        populateCollectionDropdown("add-collection-name").then(() => {
+          // Pre-select the current collection
+          setTimeout(() => {
+            const collectionDropdown = document.getElementById(
+              "add-collection-name"
+            );
+            if (collectionDropdown && selectedCollection) {
+              // Find and select the option for the current collection
+              for (let i = 0; i < collectionDropdown.options.length; i++) {
+                if (
+                  collectionDropdown.options[i].value === selectedCollection
+                ) {
+                  collectionDropdown.selectedIndex = i;
+                  break;
+                }
+              }
+            }
+          }, 300); // Small delay to ensure the dropdown is populated
+        });
+      }
+    }
+
+    // Function to populate collection dropdowns
+    async function populateCollectionDropdown(dropdownId) {
+      const dropdown = document.getElementById(dropdownId);
+      if (!dropdown) return;
+
+      dropdown.innerHTML = '<option value="">Loading collections...</option>';
+
+      try {
+        // Get collections list
+        const response = await fetch("/api/collection/collections-list");
+        const data = await response.json();
+
+        if (response.ok && data.collections) {
+          // Clear loading option and add "All Collections" option
+          dropdown.innerHTML = '<option value="">All Collections</option>';
+
+          // Add collections to dropdown
+          data.collections.forEach((collection) => {
+            const option = document.createElement("option");
+            option.value = collection.collection_name;
+            option.textContent = collection.collection_name;
+            dropdown.appendChild(option);
+          });
+
+          if (!data.collections.length) {
+            dropdown.innerHTML =
+              '<option value="">No collections found</option>';
+          }
+        } else {
+          dropdown.innerHTML =
+            '<option value="">Failed to load collections</option>';
+        }
+      } catch (error) {
+        console.error(`Error loading collections for ${dropdownId}:`, error);
+        dropdown.innerHTML =
+          '<option value="">Error loading collections</option>';
+      }
+    }
+
+    // Function to export the current collection as CSV
+    function exportCollection() {
+      if (!state.selectedCollection) {
+        console.warn("No collection selected to export");
+        return;
+      }
+
+      const collectionName = state.selectedCollection;
+      console.log(`Exporting collection: ${collectionName}`);
+
+      // Navigate to the export endpoint
+      window.location.href = `/api/collection/export/${encodeURIComponent(
+        collectionName
+      )}`;
+    }
+
+    // Function to close the collection detail panel
+    function closeCollectionDetails() {
+      const itemsPanel = document.getElementById("collection-items-panel");
+      if (itemsPanel) {
+        itemsPanel.classList.add("hidden");
+        state.selectedCollection = null;
+      }
+    }
+
+    // Function to set up form submission handlers
+    function setupFormHandlers() {
+      // Create collection form
+      const createCollectionForm = document.getElementById(
+        "create-collection-form"
+      );
+      if (createCollectionForm) {
+        createCollectionForm.addEventListener("submit", async function (e) {
+          e.preventDefault();
+          const collectionName =
+            document.getElementById("collection-name").value;
+          const statusElement = document.getElementById(
+            "collection-form-status"
+          );
+
+          if (statusElement)
+            statusElement.innerHTML =
+              '<p class="loading">Creating collection...</p>';
+
+          try {
+            const response = await fetch("/api/collection/create", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ collection_name: collectionName }),
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+              if (statusElement)
+                statusElement.innerHTML =
+                  '<p class="success">Collection created successfully!</p>';
+              // Refresh the data
+              fetchAnalytics();
+              // Clear the form
+              createCollectionForm.reset();
+              // Close the modal after a delay
+              setTimeout(() => {
+                const modal = document.getElementById(
+                  "create-collection-modal"
+                );
+                if (modal) modal.style.display = "none";
+              }, 1500);
+            } else {
+              if (statusElement)
+                statusElement.innerHTML = `<p class="error">${
+                  data.error || "Failed to create collection"
+                }</p>`;
+            }
+          } catch (error) {
+            console.error("Error creating collection:", error);
+            if (statusElement)
+              statusElement.innerHTML =
+                '<p class="error">An error occurred. Please try again.</p>';
+          }
+        });
+      }
+
+      // Edit collection form handler
+      const editCollectionForm = document.getElementById(
+        "edit-collection-form"
+      );
+      if (editCollectionForm) {
+        editCollectionForm.addEventListener("submit", async function (e) {
+          e.preventDefault();
+
+          const collectionSelector =
+            document.getElementById("collection-to-edit");
+          const newNameInput = document.getElementById("new-collection-name");
+          const statusElement = document.getElementById(
+            "edit-collection-form-status"
+          );
+
+          // Get values from the form
+          const oldCollectionName = collectionSelector.value;
+          const newCollectionName = newNameInput.value;
+
+          // Validate input
+          if (!oldCollectionName) {
+            if (statusElement)
+              statusElement.innerHTML =
+                '<p class="error">Please select a collection to edit</p>';
+            return;
+          }
+
+          if (!newCollectionName) {
+            if (statusElement)
+              statusElement.innerHTML =
+                '<p class="error">Please enter a new collection name</p>';
+            return;
+          }
+
+          // Show loading state
+          if (statusElement)
+            statusElement.innerHTML =
+              '<p class="loading">Updating collection...</p>';
+
+          try {
+            const response = await fetch(
+              `/api/collection/edit/${encodeURIComponent(oldCollectionName)}`,
+              {
+                method: "PUT",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ new_name: newCollectionName }),
+              }
+            );
+
+            const data = await response.json();
+
+            if (response.ok) {
+              if (statusElement) {
+                statusElement.innerHTML =
+                  '<p class="success">Collection updated successfully!</p>';
+              }
+
+              // Refresh data to show the updated name
+              fetchAnalytics();
+
+              // Clear the form and close the modal after a delay
+              setTimeout(() => {
+                editCollectionForm.reset();
+                const modal = document.getElementById("edit-collection-modal");
+                if (modal) modal.style.display = "none";
+              }, 1500);
+            } else {
+              if (statusElement) {
+                statusElement.innerHTML = `<p class="error">${
+                  data.error || "Failed to update collection"
+                }</p>`;
+              }
+            }
+          } catch (error) {
+            console.error("Error updating collection:", error);
+            if (statusElement) {
+              statusElement.innerHTML =
+                '<p class="error">An error occurred. Please try again.</p>';
+            }
+          }
+        });
+      }
+
+      // Add item form handler
+      const addItemForm = document.getElementById("add-item-form");
+      if (addItemForm) {
+        addItemForm.addEventListener("submit", async function (e) {
+          e.preventDefault();
+          const statusElement = document.getElementById("add-item-form-status");
+
+          // Get values from the form
+          const collectionName = document.getElementById(
+            "add-collection-name"
+          ).value;
+          const itemName = document.getElementById("add-item-name").value;
+          const itemYear = document.getElementById("add-item-year").value;
+          const itemCondition =
+            document.getElementById("add-item-condition").value;
+          const itemValue = document.getElementById("add-item-value").value;
+          const itemDescription = document.getElementById(
+            "add-item-description"
+          ).value;
+
+          // Validate input
+          if (!collectionName) {
+            if (statusElement)
+              statusElement.innerHTML =
+                '<p class="error">Please select a collection</p>';
+            return;
+          }
+
+          // Show loading state
+          if (statusElement)
+            statusElement.innerHTML = '<p class="loading">Adding item...</p>';
+
+          try {
+            // Note: Using the port 8001 to match our new server configuration
+            const response = await fetch("/api/collection/add", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                collection_name: collectionName,
+                name: itemName,
+                year: parseInt(itemYear),
+                condition: itemCondition,
+                value: parseFloat(itemValue),
+                description: itemDescription || "",
+              }),
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+              if (statusElement) {
+                statusElement.innerHTML =
+                  '<p class="success">Item added successfully!</p>';
+              }
+
+              // Refresh all analytics data to update charts and graphs
+              fetchAnalytics(null, true); // Pass null for target section and true to force full refresh
+
+              // Also refresh the collection list to show any new collections
+              loadCollections();
+
+              // Clear the form and close the modal after a delay
+              setTimeout(() => {
+                addItemForm.reset();
+                const modal = document.getElementById("add-item-modal");
+                if (modal) modal.style.display = "none";
+
+                // Show a user notification that item was added
+                showStatus(
+                  "Item successfully added to your collection!",
+                  "success"
+                );
+              }, 1500);
+            } else {
+              if (statusElement) {
+                statusElement.innerHTML = `<p class="error">${
+                  data.error || "Failed to add item"
+                }</p>`;
+              }
+            }
+          } catch (error) {
+            console.error("Error adding item:", error);
+            if (statusElement) {
+              statusElement.innerHTML =
+                '<p class="error">An error occurred. Please try again.</p>';
+            }
+          }
+        });
+      }
+
+      // Edit item form submission
+      const editItemForm = document.getElementById("edit-item-form");
+      if (editItemForm) {
+        editItemForm.addEventListener("submit", function (e) {
+          e.preventDefault();
+
+          const statusDiv = document.getElementById("edit-item-form-status");
+          statusDiv.textContent = "Updating item...";
+          statusDiv.className = "status-info";
+
+          const itemId = document.getElementById("edit-item-id").value;
+          const itemData = {
+            collection_name: document.getElementById("edit-collection").value,
+            name: document.getElementById("edit-item-name").value,
+            year: parseInt(document.getElementById("edit-item-year").value),
+            condition: document.getElementById("edit-item-condition").value,
+            value: parseFloat(document.getElementById("edit-item-value").value),
+            description: document.getElementById("edit-item-description").value,
+          };
+
+          fetch(`/api/collection/item/update/${itemId}`, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(itemData),
+          })
+            .then((response) => {
+              if (response.ok) {
+                return response.json();
+              }
+              throw new Error("Failed to update item");
+            })
+            .then((data) => {
+              statusDiv.textContent = "Item updated successfully!";
+              statusDiv.className = "status-success";
+
+              // Close modal and refresh data after a delay
+              setTimeout(() => {
+                // Close the modal using vanilla JS
+                const modal = document.getElementById("editItemModal");
+                if (modal) {
+                  modal.style.display = "none";
+                }
+
+                // Refresh search results or update the UI
+                if (typeof performSearch === "function") {
+                  performSearch(); // Re-run the search to update results
+                } else {
+                  // Make sure we're calling performSearch from the right scope
+                  window.performSearch();
+                }
+
+                // Also refresh the analytics
+                fetchAnalytics(null, false);
+
+                // Reset status
+                statusDiv.textContent = "";
+                statusDiv.className = "";
+              }, 1500);
+            })
+            .catch((error) => {
+              console.error("Error updating item:", error);
+              statusDiv.textContent =
+                "Failed to update item. Please try again.";
+              statusDiv.className = "status-error";
+            });
+        });
+      }
+
+      // ... existing code ...
+    }
+
+    // Function to show delete confirmation popup
+    function showDeleteConfirmation(itemId, itemName) {
+      const body = document.body;
+
+      // Create overlay
+      const overlay = document.createElement("div");
+      overlay.className = "delete-confirmation-overlay";
+
+      // Create popup
+      overlay.innerHTML = `
+        <div class="delete-confirmation-popup">
+          <h4>Delete Item</h4>
+          <p>Are you sure you want to delete <strong>${itemName}</strong>?</p>
+          <p class="delete-warning">Warning: This action cannot be undone.</p>
+          <div class="delete-actions">
+            <button class="btn btn-cancel" id="cancel-delete">Cancel</button>
+            <button class="btn btn-delete" id="confirm-delete">Delete</button>
+          </div>
+          <div class="delete-status"></div>
+        </div>
+      `;
+
+      // Add to body
+      body.appendChild(overlay);
+
+      // Add event listeners
+      const cancelBtn = overlay.querySelector("#cancel-delete");
+      const confirmBtn = overlay.querySelector("#confirm-delete");
+      const statusDiv = overlay.querySelector(".delete-status");
+
+      cancelBtn.addEventListener("click", function () {
+        body.removeChild(overlay);
+      });
+
+      confirmBtn.addEventListener("click", async function () {
+        // Show loading status
+        statusDiv.innerHTML = '<p class="loading">Deleting item...</p>';
+
+        try {
+          const response = await fetch(`/api/collection/delete/${itemId}`, {
+            method: "DELETE",
+          });
+
+          const data = await response.json();
+
+          if (response.ok) {
+            statusDiv.innerHTML =
+              '<p class="success">Item deleted successfully</p>';
+
+            // Remove the item from the UI with animation
+            const itemElement = document.querySelector(
+              `[data-item-id="${itemId}"]`
+            );
+            if (itemElement) {
+              itemElement.classList.add("deleting");
+              setTimeout(() => {
+                if (itemElement.parentNode) {
+                  itemElement.parentNode.removeChild(itemElement);
+                }
+              }, 300);
+            }
+
+            // Update analytics to refresh data
+            setTimeout(() => {
+              fetchAnalytics();
+              body.removeChild(overlay);
+            }, 1000);
+          } else {
+            statusDiv.innerHTML = `<p class="error">${
+              data.error || "Failed to delete item"
+            }</p>`;
+          }
+        } catch (error) {
+          console.error("Error deleting item:", error);
+          statusDiv.innerHTML =
+            '<p class="error">An error occurred while deleting</p>';
+        }
+      });
+    }
+
+    // Function to open the edit item modal with data
+    function openEditItemModal(itemData) {
+      // Get the modal
+      const modal = document.getElementById("editItemModal");
+      if (!modal) return;
+
+      // Show the modal
+      modal.style.display = "block";
+
+      // Fill the form with item data
+      const form = document.getElementById("edit-item-form");
+      if (!form) return;
+
+      // Set the form values
+      const itemIdInput = document.getElementById("edit-item-id");
+      const itemNameInput = document.getElementById("edit-item-name");
+      const itemYearInput = document.getElementById("edit-item-year");
+      const itemConditionSelect = document.getElementById(
+        "edit-item-condition"
+      );
+      const itemValueInput = document.getElementById("edit-item-value");
+      const itemDescriptionTextarea = document.getElementById(
+        "edit-item-description"
+      );
+
+      if (itemIdInput) itemIdInput.value = itemData.item_id;
+      if (itemNameInput) itemNameInput.value = itemData.name;
+      if (itemYearInput) itemYearInput.value = itemData.year;
+      if (itemValueInput) itemValueInput.value = itemData.value;
+      if (itemDescriptionTextarea)
+        itemDescriptionTextarea.value = itemData.description || "";
+
+      // Set the condition dropdown
+      if (itemConditionSelect) {
+        for (let i = 0; i < itemConditionSelect.options.length; i++) {
+          if (itemConditionSelect.options[i].value === itemData.condition) {
+            itemConditionSelect.selectedIndex = i;
+            break;
+          }
+        }
+      }
+
+      // Populate collection dropdown and select the current collection
+      populateCollectionDropdown("edit-collection-name").then(() => {
+        const collectionDropdown = document.getElementById(
+          "edit-collection-name"
+        );
+        if (collectionDropdown && itemData.collection_name) {
+          setTimeout(() => {
+            // Find and select the option for the current collection
+            for (let i = 0; i < collectionDropdown.options.length; i++) {
+              if (
+                collectionDropdown.options[i].value === itemData.collection_name
+              ) {
+                collectionDropdown.selectedIndex = i;
+                break;
+              }
+            }
+          }, 300); // Small delay to ensure the dropdown is populated
+        }
+      });
+
+      // Add event listener to cancel button
+      const cancelBtn = document.getElementById("edit-cancel-btn");
+      if (cancelBtn) {
+        cancelBtn.addEventListener("click", function () {
+          modal.style.display = "none";
+        });
+      }
+
+      // Add event listener to form submission
+      form.onsubmit = async function (e) {
+        e.preventDefault();
+
+        const statusElement = document.getElementById("edit-form-status");
+        if (statusElement)
+          statusElement.innerHTML = '<p class="loading">Updating item...</p>';
+
+        // Get form data
+        const formData = {
+          collection_name: document.getElementById("edit-collection-name")
+            .value,
+          name: document.getElementById("edit-item-name").value,
+          year: parseInt(document.getElementById("edit-item-year").value),
+          condition: document.getElementById("edit-item-condition").value,
+          value: parseFloat(document.getElementById("edit-item-value").value),
+          description:
+            document.getElementById("edit-item-description").value || "",
+        };
+
+        try {
+          const response = await fetch(
+            `/api/collection/update/${itemData.item_id}`,
+            {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(formData),
+            }
+          );
+
+          const data = await response.json();
+
+          if (response.ok) {
+            if (statusElement)
+              statusElement.innerHTML =
+                '<p class="success">Item updated successfully</p>';
+
+            // Refresh analytics data and close modal after a delay
+            setTimeout(() => {
+              fetchAnalytics();
+              modal.style.display = "none";
+            }, 1500);
+          } else {
+            if (statusElement)
+              statusElement.innerHTML = `<p class="error">${
+                data.error || "Failed to update item"
+              }</p>`;
+          }
+        } catch (error) {
+          console.error("Error updating item:", error);
+          if (statusElement)
+            statusElement.innerHTML =
+              '<p class="error">An error occurred. Please try again.</p>';
+        }
+      };
+    }
+
+    // Check for unassigned items
+    async function checkUnassignedItems() {
+      try {
+        const response = await fetch("/api/collection/unassigned");
+        const data = await response.json();
+
+        if (response.ok && data.items && data.items.length > 0) {
+          // Show the alert if there are unassigned items
+          document.getElementById("unassigned-items-alert").style.display =
+            "block";
+        }
+      } catch (error) {
+        console.error("Error checking for unassigned items:", error);
+      }
+    }
+
+    // Function to delete the selected collection
+    async function deleteSelectedCollection() {
+      const collectionDropdown = document.getElementById(
+        "collection-to-delete"
+      );
+      const statusElement = document.getElementById("delete-collection-status");
+
+      if (!collectionDropdown || !collectionDropdown.value) {
+        if (statusElement) {
+          statusElement.innerHTML =
+            '<p class="error">Please select a collection to delete</p>';
+        }
+        return;
+      }
+
+      const collectionName = collectionDropdown.value;
+      console.log(`Attempting to delete collection: "${collectionName}"`);
+
+      // Clear previous status
+      if (statusElement) {
+        statusElement.innerHTML =
+          '<p class="loading">Deleting collection...</p>';
+      }
+
+      try {
+        // Send DELETE request to the backend API
+        const url = `/api/collection/delete/${encodeURIComponent(
+          collectionName
+        )}`;
+        console.log(`Sending DELETE request to: ${url}`);
+
+        // Get CSRF token if available
+        const csrfToken = document
+          .querySelector('meta[name="csrf-token"]')
+          ?.getAttribute("content");
+
+        const headers = {
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+        };
+
+        // Add CSRF token if available
+        if (csrfToken) {
+          headers["X-CSRF-Token"] = csrfToken;
+        }
+
+        let response = await fetch(url, {
+          method: "DELETE",
+          headers: headers,
+          credentials: "same-origin", // This ensures cookies are sent with the request
+        });
+
+        // If we get a 403 error, try using POST with _method=DELETE as a fallback
+        if (response.status === 403) {
+          console.log("DELETE request returned 403. Trying POST fallback...");
+          response = await fetch(`/api/collection/delete`, {
+            method: "POST",
+            headers: headers,
+            credentials: "same-origin",
+            body: JSON.stringify({
+              _method: "DELETE",
+              collection_name: collectionName,
+            }),
+          });
+        }
+
+        console.log(
+          `Response status: ${response.status}, ${response.statusText}`
+        );
+        const data = await response.json();
+        console.log("Response data:", data);
+
+        if (response.ok) {
+          if (statusElement) {
+            statusElement.innerHTML =
+              '<p class="success">Collection deleted successfully!</p>';
+          }
+
+          // Refresh the data to update the UI
+          setTimeout(() => {
+            fetchAnalytics();
+
+            // Refresh all collection dropdowns to remove the deleted collection
+            refreshAllCollectionDropdowns();
+
+            // Close the modal after a delay
+            const modal = document.getElementById("delete-collection-modal");
+            if (modal) modal.style.display = "none";
+
+            // Reset status message
+            if (statusElement) {
+              statusElement.innerHTML = "";
+            }
+          }, 1500);
+        } else {
+          if (statusElement) {
+            const errorMsg = data.error || "Failed to delete collection";
+            console.error(`Error deleting collection: ${errorMsg}`);
+            statusElement.innerHTML = `<p class="error">${errorMsg}</p>`;
+          }
+        }
+      } catch (error) {
+        console.error("Error deleting collection:", error);
+        if (statusElement) {
+          statusElement.innerHTML =
+            '<p class="error">An error occurred. Please try again.</p>';
+        }
+      }
+    }
+
+    // Function to delete an item
+    function deleteItem(itemId, collectionName) {
+      // Show loading state in the modal
+      const statusDiv = document.getElementById("delete-item-status");
+      statusDiv.textContent = "Deleting item...";
+      statusDiv.className = "status-info";
+
+      // Disable the confirm button while processing
+      const confirmButton = document.getElementById("confirm-delete-item");
+      if (confirmButton) confirmButton.disabled = true;
+
+      // Call the API to delete the item
+      fetch(`/api/collection/item/delete/${itemId}`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+        .then((response) => {
+          if (response.ok) {
+            return response.json();
+          }
+          throw new Error("Failed to delete item");
+        })
+        .then((data) => {
+          // Show success message in the modal
+          statusDiv.textContent = `Item deleted successfully`;
+          statusDiv.className = "status-success";
+
+          // Refresh the search results or update the UI
+          if (typeof performSearch === "function") {
+            performSearch(); // Re-run the search to update results
+          } else {
+            // Make sure we're calling performSearch from the right scope
+            window.performSearch();
+          }
+
+          // Also refresh the analytics
+          fetchAnalytics(null, false);
+
+          // Close the modal after showing success message briefly
+          setTimeout(() => {
+            // Reset the status display
+            statusDiv.textContent = "";
+            statusDiv.className = "";
+
+            // Close the modal
+            const deleteItemModal =
+              document.getElementById("delete-item-modal");
+            if (deleteItemModal) deleteItemModal.style.display = "none";
+
+            // Re-enable the confirm button
+            if (confirmButton) confirmButton.disabled = false;
+          }, 1500);
+
+          // Refresh all collection dropdowns in case this was the last item in a collection
+          refreshAllCollectionDropdowns();
+        })
+        .catch((error) => {
+          console.error("Error deleting item:", error);
+          statusDiv.textContent = "Failed to delete item. Please try again.";
+          statusDiv.className = "status-error";
+
+          // Re-enable the confirm button
+          if (confirmButton) confirmButton.disabled = false;
+        });
+    }
+
+    // Add a new function to refresh all collection dropdowns
+    function refreshAllCollectionDropdowns() {
+      console.log("Refreshing all collection dropdowns");
+      // List of all dropdown IDs that need refreshing
+      const dropdownIds = [
+        "filter-collection",
+        "evolution-filter",
+        "value-filter",
+        "items-filter",
+        "collection-to-delete",
+        "collection-to-edit",
+      ];
+
+      // Refresh each dropdown
+      dropdownIds.forEach((id) => {
+        const dropdown = document.getElementById(id);
+        if (dropdown) {
+          populateCollectionDropdown(id);
+        }
+      });
+    }
+
+    // Initial data load
+    document.addEventListener("DOMContentLoaded", function () {
+      // Fetch analytics data
+      fetchAnalytics(null, false);
+
+      // Load collections
+      loadCollections();
+    });
+  });
+</script>
+
+<style>
+  .dashboard-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+
+  #collections-container {
+    margin-bottom: 30px;
+  }
+
+  #collections-container h3 {
+    margin-bottom: 15px;
+    color: #333;
+    border-bottom: 2px solid #f0f0f0;
+    padding-bottom: 10px;
+  }
+
+  .collections-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    grid-gap: 20px;
+  }
+
+  .collection-card {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    padding: 15px;
+    transition: transform 0.2s;
+  }
+
+  .collection-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  }
+
+  .collection-card h3 {
+    margin: 0 0 10px 0;
+    color: #333;
+    font-size: 1.2rem;
+  }
+
+  .collection-card p {
+    margin: 0;
+    color: #666;
+  }
+
+  .loading-container {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  .dashboard-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    margin: 20px 0;
+  }
+
+  .stats-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+  }
+
+  .stats-card {
+    background: #fff;
+    padding: 25px;
+    border-radius: 10px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    min-height: 250px; /* Ensure consistent height */
+  }
+
+  .stats-card h4 {
+    margin: 0 0 20px;
+    color: #333;
+    font-size: 1.1em;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #f0f0f0;
+  }
+
+  .card-content {
+    flex: 1;
+    position: relative;
+  }
+
+  .chart-loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.8);
+    color: #666;
+    font-style: italic;
+    z-index: 10;
+  }
+
+  /* Collection-specific styles */
+  #collection-distribution {
+    grid-column: 1 / -1; /* Make collections card full width on larger screens */
+  }
+
+  #distribution-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 15px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    overflow-y: auto;
+    max-height: 300px;
+  }
+
+  .collection-item {
+    background: #f8f9fa;
+    padding: 12px 15px;
+    border-radius: 6px;
+    margin: 0;
+    border: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  /* Refinements for existing card contents */
+  .collection-filter {
+    width: 100%;
+    padding: 8px;
+    margin-bottom: 15px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background-color: white;
+    font-size: 14px;
+  }
+
+  .collection-filter:focus {
+    outline: none;
+    border-color: #3498db;
+  }
+
+  #value-amount {
+    margin-top: 15px;
+  }
+
+  /* Enhanced styling for the total value display */
+  #total-value p {
+    text-align: center;
+    margin: 10px 0 0 0;
+  }
+
+  #total-value #value-amount {
+    display: block;
+    font-size: 2.5rem;
+    font-weight: bold;
+    color: #27ae60;
+    margin: 10px 0;
+    line-height: 1.2;
+  }
+
+  #total-value .card-content {
+    display: flex;
+    flex-direction: column;
+  }
+
+  #total-value p {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+  }
+
+  #total-value p::before {
+    content: "$";
+    font-size: 1.8rem;
+    font-weight: bold;
+    color: #27ae60;
+  }
+
+  #valuable-items-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    overflow-y: auto;
+    max-height: 300px;
+  }
+
+  .top-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    border-bottom: 1px solid #eee;
+  }
+
+  .top-item:last-child,
+  .collection-item:last-child {
+    border-bottom: none;
+  }
+
+  .collection-name {
+    font-size: 1.2em;
+    font-weight: bold;
+    color: #2c3e50;
+    margin-bottom: 10px;
+  }
+
+  .collection-value {
+    color: #27ae60;
+    font-weight: bold;
+  }
+
+  .collection-count {
+    color: #7f8c8d;
+    font-size: 0.9em;
+  }
+
+  .collection-top-item {
+    margin-top: 10px;
+    font-style: italic;
+  }
+
+  .item-collection {
+    font-size: 0.9em;
+    color: #7f8c8d;
+    font-style: italic;
+  }
+
+  .item-value {
+    font-weight: bold;
+    color: #27ae60;
+  }
+
+  .item-count {
+    color: #7f8c8d;
+    font-size: 0.9em;
+  }
+
+  /* State styles */
+  .loading {
+    color: #666;
+    font-style: italic;
+  }
+
+  .error {
+    color: #e74c3c;
+    font-weight: bold;
+  }
+
+  .no-data {
+    color: #95a5a6;
+    font-style: italic;
+  }
+
+  .success {
+    color: #27ae60;
+  }
+
+  /* Evolution graph */
+  #evolution-chart {
+    grid-column: 1 / -1;
+    margin-top: 20px;
+  }
+
+  .filter-container {
+    display: flex;
+    justify-content: space-between;
+    gap: 15px;
+    margin-bottom: 20px;
+    width: 100%;
+  }
+
+  .metric-selector,
+  .collection-selector {
+    flex: 1;
+  }
+
+  .filter-container .collection-filter {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background-color: white;
+    font-size: 14px;
+  }
+
+  .filter-container .collection-filter:focus {
+    outline: none;
+    border-color: #3498db;
+  }
+
+  /* Chart container */
+  .chart-container {
+    position: relative;
+    height: 300px;
+    width: 100%;
+    margin-top: 10px;
+  }
+
+  /* Specific styles for the wealth split chart */
+  #wealth-split-chart {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 350px; /* Increased height for better proportions */
+  }
+
+  #wealth-split-canvas {
+    max-width: 95%;
+    max-height: 95%;
+  }
+
+  /* Modal styling */
+  .modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    overflow: auto;
+  }
+
+  .modal-content {
+    position: relative;
+    background-color: #fff;
+    margin: 10% auto;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    width: 80%;
+    max-width: 500px;
+  }
+
+  .close-btn {
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    font-size: 24px;
+    font-weight: bold;
+    cursor: pointer;
+  }
+
+  .close-btn:hover {
+    color: #555;
+  }
+
+  /* Status styles for the modal */
+  #delete-item-status {
+    margin-top: 15px;
+    padding: 8px;
+    border-radius: 4px;
+    text-align: center;
+  }
+
+  /* Button styles */
+  .btn-delete {
+    background-color: #e74c3c;
+    color: white;
+  }
+
+  .btn-delete:hover {
+    background-color: #c0392b;
+  }
+
+  .btn-cancel {
+    background-color: #95a5a6;
+    color: white;
+  }
+
+  .btn-cancel:hover {
+    background-color: #7f8c8d;
+  }
+
+  .form-actions {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 15px;
+  }
+
+  /* Warning text */
+  .delete-warning {
+    color: #e74c3c;
+    font-weight: bold;
+    font-size: 14px;
+    margin: 10px 0;
+  }
+
+  /* Dashboard actions */
+  .dashboard-actions {
+    margin-top: 30px;
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+  }
+
+  .dashboard-actions .btn {
+    padding: 10px 20px;
+    background-color: #3498db;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: bold;
+    transition: background-color 0.2s;
+  }
+
+  .dashboard-actions .btn:hover {
+    background-color: #2980b9;
+  }
+
+  /* Responsive layout adjustments */
+  @media (min-width: 1200px) {
+    .stats-container {
+      grid-template-columns: 3fr 2fr;
+    }
+
+    .stats-card:not(#wealth-split) {
+      grid-column: auto;
+    }
+
+    #wealth-split {
+      grid-column: 2;
+      grid-row: 1 / span 3;
+    }
+  }
+
+  @media (min-width: 768px) and (max-width: 1199px) {
+    .dashboard-stats {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    #collection-distribution {
+      grid-column: 1 / -1;
+      margin-bottom: 20px;
+    }
+  }
+
+  @media (max-width: 767px) {
+    .dashboard-stats {
+      grid-template-columns: 1fr;
+    }
+
+    .stats-card {
+      min-height: auto;
+    }
+
+    .modal-content {
+      margin: 20% auto;
+      padding: 20px;
+      width: 85%;
+    }
+
+    .chart-container {
+      height: 250px;
+    }
+  }
+
+  /* Collection detail panel styles */
+  .collection-items-panel {
+    margin-top: 20px;
+    border-top: 2px solid #f0f0f0;
+    padding-top: 15px;
+    transition: all 0.3s ease;
+    max-height: 500px;
+    overflow-y: auto;
+  }
+
+  .collection-items-panel.hidden {
+    display: none;
+  }
+
+  .panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    border-bottom: 1px solid #eee;
+  }
+
+  .panel-header h5 {
+    margin: 0;
+    font-size: 1.1em;
+    color: #3498db;
+  }
+
+  .close-panel-btn {
+    background: none;
+    border: none;
+    font-size: 22px;
+    cursor: pointer;
+    color: #777;
+  }
+
+  .close-panel-btn:hover {
+    color: #e74c3c;
+  }
+
+  .collection-items-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .collection-item-detail {
+    padding: 15px;
+    border-radius: 6px;
+    margin-bottom: 10px;
+    background: #f8f9fa;
+    border: 1px solid #eee;
+  }
+
+  .item-detail-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  .item-detail-row.secondary {
+    font-size: 0.9em;
+    color: #666;
+  }
+
+  .item-detail-name {
+    font-weight: bold;
+  }
+
+  .item-detail-value {
+    font-weight: bold;
+    color: #27ae60;
+  }
+
+  .item-description {
+    font-size: 0.9em;
+    font-style: italic;
+    color: #666;
+    margin-top: 10px;
+    border-top: 1px solid #eee;
+    padding-top: 5px;
+  }
+
+  /* Selected collection highlight */
+  .collection-item.selected {
+    background-color: #ebf5fb;
+    border-color: #3498db;
+    position: relative;
+  }
+
+  .collection-item.selected::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background-color: #3498db;
+    border-radius: 3px 0 0 3px;
+  }
+
+  /* Make collection items look clickable */
+  .collection-item {
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .collection-item:hover {
+    background-color: #f0f7fa;
+    transform: translateY(-2px);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+  }
+
+  #distribution-list {
+    overflow-y: auto;
+    max-height: 300px;
+  }
+
+  /* Responsive adjustments */
+  @media (max-width: 767px) {
+    .collection-items-panel {
+      max-height: 400px;
+    }
+
+    .item-detail-row {
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .item-detail-row.secondary {
+      flex-direction: row;
+    }
+  }
+
+  /* Delete button styles */
+  .delete-item-btn {
+    background: none;
+    border: none;
+    color: #ccc;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 2px 8px;
+    border-radius: 50%;
+    transition: all 0.2s ease;
+    margin-left: 10px;
+  }
+
+  .delete-item-btn:hover {
+    color: #e74c3c;
+    background-color: rgba(231, 76, 60, 0.1);
+  }
+
+  /* Item deletion animation */
+  .collection-item-detail.deleting {
+    opacity: 0;
+    transform: translateX(50px);
+    transition: all 0.3s ease;
+    overflow: hidden;
+    height: 0 !important;
+    padding: 0;
+    margin: 0;
+    border: none;
+  }
+
+  /* Delete confirmation popup styles */
+  .delete-confirmation-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+
+  .delete-confirmation-popup {
+    background-color: white;
+    border-radius: 8px;
+    padding: 25px;
+    width: 400px;
+    max-width: 90%;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  }
+
+  .delete-confirmation-popup h4 {
+    margin-top: 0;
+    color: #e74c3c;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 10px;
+  }
+
+  .delete-warning {
+    color: #e74c3c;
+    font-size: 0.9em;
+    font-style: italic;
+  }
+
+  .delete-actions {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 20px;
+  }
+
+  .btn-cancel {
+    background-color: #95a5a6;
+  }
+
+  .btn-cancel:hover {
+    background-color: #7f8c8d;
+  }
+
+  .btn-delete {
+    background-color: #e74c3c;
+  }
+
+  .btn-delete:hover {
+    background-color: #c0392b;
+  }
+
+  .delete-status {
+    margin-top: 15px;
+    text-align: center;
+  }
+
+  /* Make sure item detail rows properly position delete button */
+  .item-detail-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    align-items: center;
+  }
+
+  .item-detail-value {
+    margin-left: auto;
+    margin-right: 5px;
+  }
+
+  /* Quick Actions Card Styling */
+  #quick-actions {
+    margin-top: 10px;
+  }
+
+  .quick-actions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 15px;
+  }
+
+  .action-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px 10px;
+    background-color: #f8f9fa;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+  }
+
+  .action-btn:hover {
+    background-color: #e3f2fd;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+    border-color: #90caf9;
+  }
+
+  .action-btn.danger:hover {
+    background-color: #ffebee;
+    border-color: #ef9a9a;
+  }
+
+  .action-icon {
+    font-size: 24px;
+    margin-bottom: 8px;
+    color: #3498db;
+    font-style: normal;
+  }
+
+  .action-btn.danger .action-icon {
+    color: #e74c3c;
+  }
+
+  .action-btn span {
+    font-size: 14px;
+    font-weight: 500;
+    color: #555;
+  }
+
+  .action-btn.disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+
+  /* Responsive adjustments for Quick Actions */
+  @media (max-width: 767px) {
+    .quick-actions-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  /* Collection selector for edit and delete modals */
+  .collection-selector {
+    margin-bottom: 20px;
+  }
+
+  .collection-selector label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+  }
+
+  .collection-selector select {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+  }
+
+  /* Form actions for the modals */
+  .form-actions {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 20px;
+  }
+
+  .form-actions button {
+    padding: 8px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: none;
+    font-weight: bold;
+  }
+
+  .btn-save {
+    background-color: #3498db;
+    color: white;
+  }
+
+  .btn-save:hover {
+    background-color: #2980b9;
+  }
+
+  .detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    border-bottom: 1px solid #eee;
+  }
+
+  .detail-actions {
+    display: flex;
+    gap: 10px;
+  }
+
+  .export-btn {
+    background-color: #27ae60;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .export-btn:hover {
+    background-color: #219653;
+  }
+
+  .close-detail-btn {
+    background: none;
+    border: none;
+    font-size: 22px;
+    cursor: pointer;
+    color: #777;
+  }
+
+  .close-detail-btn:hover {
+    color: #e74c3c;
+  }
+
+  /* Search Card Styles */
+  #item-search {
+    margin-top: 20px;
+    margin-bottom: 20px;
+  }
+
+  .search-container {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    margin-bottom: 15px;
+  }
+
+  .search-bar {
+    display: flex;
+    flex: 1;
+    max-width: 600px;
+    margin-right: 10px;
+  }
+
+  .search-bar input {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px 0 0 4px;
+    font-size: 16px;
+  }
+
+  .search-bar button {
+    padding: 10px 15px;
+    background-color: #3498db;
+    color: white;
+    border: none;
+    border-radius: 0 4px 4px 0;
+    cursor: pointer;
+  }
+
+  .filter-toggle {
+    background-color: #f8f9fa;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 10px 15px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+
+  .filter-toggle:hover {
+    background-color: #e9ecef;
+  }
+
+  .search-filters {
+    background-color: #f8f9fa;
+    border-radius: 4px;
+    padding: 15px;
+    margin-bottom: 15px;
+    border: 1px solid #eee;
+  }
+
+  .filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    margin-bottom: 15px;
+  }
+
+  .filter-group {
+    flex: 1;
+    min-width: 200px;
+  }
+
+  .filter-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+    color: #555;
+  }
+
+  .filter-select {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+  }
+
+  .range-inputs {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .range-inputs input {
+    flex: 1;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+  }
+
+  .range-inputs span {
+    color: #777;
+    font-size: 14px;
+  }
+
+  .filter-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+
+  .btn-secondary {
+    background-color: #6c757d;
+    color: white;
+  }
+
+  .search-results {
+    margin-top: 20px;
+    max-height: 500px;
+    overflow-y: auto;
+  }
+
+  .search-results-count {
+    margin-bottom: 10px;
+    color: #555;
+    font-style: italic;
+  }
+
+  .search-results-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .search-result-item {
+    padding: 15px;
+    margin-bottom: 15px;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    background-color: white;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .result-main {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  .result-name {
+    font-weight: bold;
+  }
+
+  .result-value {
+    font-weight: bold;
+    color: #27ae60;
+  }
+
+  .result-details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    font-size: 0.9em;
+    color: #666;
+    margin-bottom: 8px;
+  }
+
+  .result-description {
+    font-style: italic;
+    color: #666;
+    font-size: 0.9em;
+    border-top: 1px solid #eee;
+    padding-top: 5px;
+  }
+
+  .result-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .result-actions button {
+    font-size: 0.85rem;
+    padding: 4px 8px;
+  }
+
+  @media (max-width: 767px) {
+    .search-bar {
+      max-width: none;
+      margin-right: 0;
+      margin-bottom: 10px;
+    }
+
+    .filter-row {
+      flex-direction: column;
+      gap: 10px;
+    }
+  }
+
+  /* Additional CSS */
+  .wealth-split-title,
+  .evolution-chart-title {
+    font-size: 1.5rem;
+    font-weight: bold;
+    text-align: center;
+    margin-bottom: 15px;
+    color: #2c3e50;
+  }
+
+  /* Evolution Chart Styling */
+  #evolution-chart .card-content {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  #evolution-chart-canvas {
+    max-width: 90%;
+    height: 300px !important;
+    margin: 0 auto;
+  }
+
+  #evolution-chart .filter-container {
+    margin-bottom: 15px;
+    justify-content: center;
+  }
+
+  #global-status {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    padding: 10px 15px;
+    border-radius: 5px;
+    font-weight: 500;
+    z-index: 1050;
+    max-width: 80%;
+    display: none;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  }
+
+  #global-status:not(:empty) {
+    display: block;
+  }
+
+  .status-info {
+    background-color: #cfe2ff;
+    color: #084298;
+    border: 1px solid #b6d4fe;
+  }
+
+  .status-success {
+    background-color: #d1e7dd;
+    color: #0f5132;
+    border: 1px solid #badbcc;
+  }
+
+  .status-error {
+    background-color: #f8d7da;
+    color: #842029;
+    border: 1px solid #f5c2c7;
+  }
+</style>
+{% endblock %}

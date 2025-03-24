@@ -1,0 +1,32 @@
+# .gcloudignore
+# Exclude git files
+.git
+.gitignore
+.gitattributes
+
+# Python virtual environments
+project_env/
+project_env_310/
+venv/
+env/
+.venv/
+.env/
+
+# Python compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.swp
+*.bak
+*.egg-info/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumb

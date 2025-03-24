@@ -1,0 +1,5 @@
+runtime: python310
+entrypoint: gunicorn --bind :$PORT main:app
+
+env_variables:
+  FLASK_ENV: "production"

@@ -1,0 +1,40 @@
+.empty-collection {
+  color: #999;
+  font-style: italic;
+}
+
+/* Empty collection state styling */
+.no-data {
+  text-align: center;
+  padding: 30px;
+  color: #666;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+  margin: 20px 0;
+}
+
+.no-data p {
+  margin: 10px 0;
+  font-size: 16px;
+}
+
+.no-data p:first-child {
+  font-size: 18px;
+  font-weight: bold;
+  color: #333;
+}
+
+.no-data .add-item-button {
+  margin-top: 15px;
+  padding: 8px 16px;
+  background-color: #4a90e2;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.no-data .add-item-button:hover {
+  background-color: #357ab8;
+}

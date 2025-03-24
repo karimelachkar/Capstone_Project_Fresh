@@ -1,0 +1,87 @@
+{% extends "base.html" %} {% block title %}About{% endblock %} {% block content
+%}
+<div class="container mt-5">
+  <div class="row">
+    <div class="col-lg-8 mx-auto">
+      <div class="card shadow">
+        <div class="card-body p-5">
+          <h1 class="text-center mb-4">About My Collections</h1>
+
+          <p class="lead">
+            My Collections is a powerful platform designed to help collectors
+            manage, track, and analyze their valuable collectibles.
+          </p>
+
+          <h3>Our Mission</h3>
+          <p>
+            We believe that collecting is more than just a hobby—it's a passion.
+            Our mission is to provide collectors with tools that make organizing
+            and understanding their collections easier and more enjoyable.
+          </p>
+
+          <h3>Features</h3>
+          <ul>
+            <li>
+              <strong>Organize Collections</strong>: Create separate collections
+              for different types of collectibles
+            </li>
+            <li>
+              <strong>Track Value</strong>: Monitor the total value of your
+              collections over time
+            </li>
+            <li>
+              <strong>Analyze Trends</strong>: Visualize the growth and
+              distribution of your collection with interactive charts
+            </li>
+            <li>
+              <strong>Secure Storage</strong>: Keep all your collection data
+              safe and accessible anywhere
+            </li>
+          </ul>
+
+          <h3>Getting Started</h3>
+          <p>To get started with My Collections:</p>
+          <ol>
+            <li>Create an account or log in</li>
+            <li>Create your first collection</li>
+            <li>
+              Add items with details like name, year, condition, and value
+            </li>
+            <li>Explore analytics to gain insights about your collectibles</li>
+          </ol>
+
+          <div class="text-center mt-4">
+            <a href="/" class="btn btn-primary">Return to Home</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .card {
+    border-radius: 10px;
+    border: none;
+  }
+
+  h1,
+  h3 {
+    color: #3498db;
+  }
+
+  .lead {
+    font-size: 1.2rem;
+    color: #555;
+  }
+
+  ul,
+  ol {
+    margin-bottom: 20px;
+  }
+
+  li {
+    margin-bottom: 8px;
+  }
+</style>
+{% endblock %}
