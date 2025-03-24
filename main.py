@@ -2,6 +2,11 @@ import os
 from flask import Flask, render_template, jsonify, Blueprint, redirect, url_for, request, session, send_from_directory
 from flask_session import Session
 import json
+import tempfile
+
+# Create session directory in /tmp which is writable in App Engine
+session_dir = os.path.join(tempfile.gettempdir(), 'flask_session')
+os.makedirs(session_dir, exist_ok=True)
 
 # Create a simple Flask app
 app = Flask(__name__, 
@@ -11,6 +16,10 @@ app = Flask(__name__,
 # Configure app settings
 app.secret_key = os.getenv("SECRET_KEY", "supersecretkey")
 app.config['SESSION_TYPE'] = 'filesystem'
+app.config['SESSION_FILE_DIR'] = session_dir
+app.config['SESSION_USE_SIGNER'] = False
+app.config['SESSION_PERMANENT'] = False
+app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour
 Session(app)
 
 # Create an auth blueprint
