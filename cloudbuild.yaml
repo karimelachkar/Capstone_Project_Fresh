@@ -1,0 +1,32 @@
+steps:
+  # Install dependencies
+  - name: "python:3.10"
+    entrypoint: pip
+    args: ["install", "-r", "requirements.txt", "--user"]
+
+  # Run tests (uncomment if you have tests)
+  # - name: 'python:3.10'
+  #   entrypoint: python
+  #   args: ['-m', 'pytest']
+
+  # Deploy to App Engine
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    entrypoint: "bash"
+    args: ["-c", "gcloud app deploy app.yaml --quiet"]
+
+# Optional: Build and deploy frontend
+# - name: 'node'
+#   dir: 'capstone_frontend_karim'
+#   entrypoint: npm
+#   args: ['install']
+
+# - name: 'node'
+#   dir: 'capstone_frontend_karim'
+#   entrypoint: npm
+#   args: ['run', 'build']
+
+# You can add a step to deploy the frontend to Firebase, Cloud Storage, or elsewhere
+
+timeout: "1600s"
+options:
+  logging: CLOUD_LOGGING_ONLY
