@@ -470,62 +470,64 @@ def delete_item(item_id):
 
 @collection_blueprint.route("/search", methods=["GET"])
 @login_required
-def search_collection():
+def search_items():
     """
-    API endpoint to search items in the collection.
-    Supports searching by name, description, tags, and collection name.
-    
-    Query Parameters:
-        q (str): Search query
-        collection (str, optional): Filter by collection name
-        tags (str, optional): Comma-separated list of tags to filter by
+    API endpoint to search for items in collections.
+    Query parameters:
+    - q: Search query
+    - collection: Filter by collection
     """
     user_id = session.get('user_id')
-    query = request.args.get('q', '')
-    collection = request.args.get('collection', '')
-    tags = request.args.get('tags', '').split(',') if request.args.get('tags') else []
     
-    if not query:
-        return jsonify({"error": "Search query is required"}), 400
+    # Get query parameters
+    query = request.args.get('q', '')
+    collection_name = request.args.get('collection', '')
     
     client = get_bigquery_client()
     client._location = "europe-southwest1"
     
-    # Build search query
-    search_query = f"""
-        SELECT * FROM `{BQ_COLLECTION_ITEMS_TABLE}`
+    # Construct base query
+    base_query = f"""
+        SELECT 
+            item_id, name, description, collection_name, value,
+            IFNULL(value, 0) as numeric_value, 
+            created_at, updated_at
+        FROM `{BQ_COLLECTION_ITEMS_TABLE}`
         WHERE user_id = @user_id
-        AND (
-            LOWER(name) LIKE LOWER(@query)
-            OR LOWER(description) LIKE LOWER(@query)
-            OR LOWER(collection_name) LIKE LOWER(@query)
-        )
     """
     
     query_params = [
-        bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
-        bigquery.ScalarQueryParameter("query", "STRING", f"%{query}%")
+        bigquery.ScalarQueryParameter("user_id", "STRING", user_id)
     ]
     
-    # Add collection filter if specified
-    if collection:
-        search_query += " AND LOWER(collection_name) = LOWER(@collection)"
-        query_params.append(bigquery.ScalarQueryParameter("collection", "STRING", collection))
+    # Add search query if provided
+    if query:
+        base_query += " AND (LOWER(name) LIKE @query OR LOWER(description) LIKE @query)"
+        query_params.append(bigquery.ScalarQueryParameter("query", "STRING", f"%{query.lower()}%"))
     
-    # Add tags filter if specified
-    if tags:
-        search_query += " AND EXISTS (SELECT 1 FROM UNNEST(tags) tag WHERE tag IN UNNEST(@tags))"
-        query_params.append(bigquery.ArrayQueryParameter("tags", "STRING", tags))
+    # Add collection filter if provided
+    if collection_name:
+        base_query += " AND collection_name = @collection_name"
+        query_params.append(bigquery.ScalarQueryParameter("collection_name", "STRING", collection_name))
+    
+    # Finalize query with order and limit
+    search_query = f"""
+        {base_query}
+        ORDER BY numeric_value DESC
+        LIMIT 50
+    """
     
     job_config = bigquery.QueryJobConfig(query_parameters=query_params)
     
     try:
+        # Execute query
         results = client.query(search_query, job_config=job_config).result()
         items = [dict(row) for row in results]
-        return jsonify({"items": items}), 200
+        
+        return jsonify({"results": items}), 200
     except Exception as e:
-        print(f"[ERROR] Search failed: {str(e)}")
-        return jsonify({"error": "Search failed", "details": str(e)}), 500
+        print(f"[ERROR] Search query failed: {str(e)}")
+        return jsonify({"error": "Failed to search items", "details": str(e)}), 500
 
 @collection_blueprint.route("/analytics", methods=["GET"])
 @login_required
@@ -662,11 +664,60 @@ def get_collection_analytics():
                 } for i in range(1, 6)
             ]
         
+        # Add additional data needed by the frontend
+        # Filter the valuable items if an items_filter is provided in the query parameters
+        items_filter = request.args.get('items_filter')
+        if items_filter:
+            print(f"[DEBUG] Filtering valuable items by collection: {items_filter}")
+            valuable_items = [item for item in valuable_items if item['collection_name'] == items_filter]
+        
+        # Calculate total value
+        try:
+            total_value_query = f"""
+                SELECT SUM(IFNULL(value, 0)) as total_value
+                FROM `{BQ_COLLECTION_ITEMS_TABLE}`
+                WHERE user_id = @user_id
+            """
+            total_value_result = client.query(total_value_query, job_config=job_config).result()
+            overall_total = next(total_value_result).total_value or 0
+        except Exception as e:
+            print(f"[WARNING] Failed to calculate total value: {str(e)}")
+            overall_total = 0
+        
+        # Calculate per-collection values for wealth split
+        try:
+            collection_values_query = f"""
+                SELECT collection_name, SUM(IFNULL(value, 0)) as total_value, COUNT(*) as item_count
+                FROM `{BQ_COLLECTION_ITEMS_TABLE}`
+                WHERE user_id = @user_id
+                AND collection_name IS NOT NULL
+                AND TRIM(collection_name) != ''
+                GROUP BY collection_name
+                ORDER BY total_value DESC
+            """
+            collection_values_result = client.query(collection_values_query, job_config=job_config).result()
+            collection_values = [dict(row) for row in collection_values_result]
+            
+            # Enrich the collections with total_value
+            for collection in collections:
+                matching = next((cv for cv in collection_values if cv['collection_name'] == collection['collection_name']), None)
+                if matching:
+                    collection['total_value'] = matching['total_value']
+                    collection['item_count'] = matching['item_count']
+                else:
+                    collection['total_value'] = 0
+                    collection['item_count'] = 0
+        except Exception as e:
+            print(f"[WARNING] Failed to calculate collection values: {str(e)}")
+            # Leave collections as is
+        
+        # Return all the data needed by the frontend
         return jsonify({
             "total_items": total_items,
             "collections": collections,
             "tags": tags,
-            "valuable_items": valuable_items
+            "valuable_items": valuable_items,
+            "overall_total": overall_total
         }), 200
     except bigquery.exceptions.GoogleCloudError as e:
         print(f"[ERROR] BigQuery API error: {str(e)}")
@@ -997,12 +1048,12 @@ def get_collections_list():
     client._location = "europe-southwest1"
     
     try:
-        # Simplified query that just gets collection names and counts
-        # without joining tables, to avoid schema issues
+        # Get collection names and counts
         query = f"""
             SELECT 
                 collection_name,
-                COUNT(*) as item_count
+                COUNT(*) as item_count,
+                SUM(IFNULL(value, 0)) as total_value
             FROM `{BQ_COLLECTION_ITEMS_TABLE}`
             WHERE user_id = @user_id
             AND collection_name IS NOT NULL
@@ -1017,8 +1068,15 @@ def get_collections_list():
             ]
         )
         
+        # Execute the query
         results = client.query(query, job_config=job_config).result()
         collections = [dict(row) for row in results]
+        
+        # If we don't have any collections from the query, create an empty list
+        if not collections:
+            return jsonify({"collections": []}), 200
+            
+        # Return the collections data
         return jsonify({"collections": collections}), 200
     except Exception as e:
         import traceback
