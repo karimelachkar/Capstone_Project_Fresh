@@ -1,7 +1,6 @@
 import sys
 import os
 import logging
-from flask import Flask, jsonify
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -20,38 +19,24 @@ try:
     app = create_app()
     
     # Add a simple route directly to the app as a fallback
-    @app.route('/ping')
-    def ping():
-        return 'App is running!'
+    @app.route('/api/health')
+    def health():
+        return {'status': 'ok', 'message': 'App is running'}
     
     logging.info("Application created successfully")
 except Exception as e:
     logging.error(f"Error creating app: {str(e)}")
     # Create a minimal Flask app for error reporting
+    from flask import Flask, jsonify
     app = Flask(__name__)
     
     @app.route('/')
     def error():
         return f'Error initializing application: {str(e)}', 500
     
-    @app.route('/ping')
-    def ping():
-        return 'Minimal app is running'
-
-# Create a simple Flask app for testing
-app = Flask(__name__)
-
-@app.route('/')
-def index():
-    return jsonify({
-        'status': 'ok',
-        'message': 'Application is running',
-        'env': os.environ.get('FLASK_ENV', 'unknown')
-    })
-
-@app.route('/ping')
-def ping():
-    return 'pong'
+    @app.route('/api/health')
+    def health():
+        return jsonify({'status': 'error', 'message': str(e)})
 
 # Only used when running locally
 if __name__ == '__main__':
