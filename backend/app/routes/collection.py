@@ -6,7 +6,7 @@ Handles CRUD operations for collections and collection items, including search a
 import uuid
 from flask import Blueprint, request, jsonify, session, Response
 from functools import wraps
-from app.config.bigquery import get_bigquery_client, BQ_COLLECTION_ITEMS_TABLE, BQ_COLLECTIONS_TABLE
+from backend.app.config.bigquery import get_bigquery_client, BQ_COLLECTION_ITEMS_TABLE, BQ_COLLECTIONS_TABLE
 from google.cloud import bigquery
 import csv
 import io

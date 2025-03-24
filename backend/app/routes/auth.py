@@ -6,7 +6,7 @@ Handles user registration, login, logout, and password reset functionality.
 import uuid
 import bcrypt
 from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for, make_response
-from app.config.bigquery import get_bigquery_client, BQ_USERS_TABLE
+from backend.app.config.bigquery import get_bigquery_client, BQ_USERS_TABLE
 from google.cloud import bigquery
 
 # Initialize Blueprint for authentication routes
