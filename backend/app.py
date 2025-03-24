@@ -8,12 +8,12 @@ import tempfile
 from datetime import timedelta
 from flask import Flask, render_template, session, redirect, url_for, request, make_response
 from flask_session import Session
-from app.routes.auth import auth_blueprint
-from app.routes.collection import collection_blueprint
-from app.utils.token_blocklist import is_token_revoked
-from app.config.bigquery import get_bigquery_client, BQ_COLLECTION_ITEMS_TABLE, BQ_USERS_TABLE
+from backend.app.routes.auth import auth_blueprint
+from backend.app.routes.collection import collection_blueprint
+from backend.app.utils.token_blocklist import is_token_revoked
+from backend.app.config.bigquery import get_bigquery_client, BQ_COLLECTION_ITEMS_TABLE, BQ_USERS_TABLE
 from google.cloud import bigquery
-from app.utils.decorators import login_required
+from backend.app.utils.decorators import login_required
 import logging
 import sys
 
