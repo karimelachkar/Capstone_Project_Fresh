@@ -1,7 +1,6 @@
 runtime: python310
-entrypoint: gunicorn --bind :$PORT main:app
+entrypoint: gunicorn -b :$PORT main:app
 
 env_variables:
   FLASK_ENV: "production"
-  SECRET_KEY: "supersecretkey" # Replace with a better secret key in production
-  GOOGLE_APPLICATION_CREDENTIALS: "/app/key.json" # For local credentials, will use default App Engine credentials
+  SECRET_KEY: "supersecretkey"

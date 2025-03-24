@@ -1,6 +1,7 @@
 import sys
 import os
 import logging
+from flask import Flask, jsonify
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -27,7 +28,6 @@ try:
 except Exception as e:
     logging.error(f"Error creating app: {str(e)}")
     # Create a minimal Flask app for error reporting
-    from flask import Flask
     app = Flask(__name__)
     
     @app.route('/')
@@ -36,4 +36,23 @@ except Exception as e:
     
     @app.route('/ping')
     def ping():
-        return 'Minimal app is running' 
+        return 'Minimal app is running'
+
+# Create a simple Flask app for testing
+app = Flask(__name__)
+
+@app.route('/')
+def index():
+    return jsonify({
+        'status': 'ok',
+        'message': 'Application is running',
+        'env': os.environ.get('FLASK_ENV', 'unknown')
+    })
+
+@app.route('/ping')
+def ping():
+    return 'pong'
+
+# Only used when running locally
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8080, debug=True) 
