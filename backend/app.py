@@ -168,5 +168,8 @@ def create_app():
         print(f"Error starting server: {str(e)}")
         sys.exit(1)
 
+# Create the app instance (needed for gunicorn)
+app = create_app()
+
 if __name__ == "__main__":
-    create_app()
+    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 8080)), debug=True)
