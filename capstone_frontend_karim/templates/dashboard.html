@@ -1869,7 +1869,7 @@
           // Get values from the form
           const selectedOption =
             collectionSelector.options[collectionSelector.selectedIndex];
-          const collectionId = selectedOption.dataset.collectionId;
+          const collectionId = selectedOption.value; // Get ID directly from value, not from dataset
           const newCollectionName = newNameInput.value.trim();
 
           // Clear any previous error messages
