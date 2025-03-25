@@ -1754,7 +1754,22 @@
           // Add collections to dropdown
           data.collections.forEach((collection) => {
             const option = document.createElement("option");
-            option.value = collection.collection_id; // Use collection_id as the value
+
+            // Use different values based on the dropdown purpose
+            if (dropdownId === "items-filter") {
+              // For filtering valuable items, use the collection_name as the value
+              option.value = collection.collection_name;
+            } else if (
+              dropdownId === "collection-to-edit" ||
+              dropdownId === "collection-to-delete"
+            ) {
+              // For edit/delete operations, use collection_id as the value
+              option.value = collection.collection_id;
+            } else {
+              // For other dropdowns, use collection_id as the value
+              option.value = collection.collection_id;
+            }
+
             option.textContent = collection.collection_name;
             option.dataset.collectionId = collection.collection_id;
             dropdown.appendChild(option);
