@@ -459,6 +459,27 @@
       selectedCollection: null,
     };
 
+    // Initialize dashboard
+    function initDashboard() {
+      console.log("Initializing dashboard");
+
+      // Set up event listeners
+      setupEventListeners();
+
+      // Set up search and filters
+      setupSearchAndFilters();
+
+      // Fetch data and update the dashboard
+      fetchAnalytics(null, false).then(() => {
+        // After analytics are loaded, refresh all collection dropdowns
+        // This ensures they are loaded with the latest data
+        refreshAllCollectionDropdowns();
+      });
+
+      // Check for unassigned items
+      checkUnassignedItems();
+    }
+
     // Fetch initial data
     fetchAnalytics(null, false);
     setupEventListeners();
@@ -1832,8 +1853,8 @@
       dropdown.innerHTML = '<option value="">Loading collections...</option>';
 
       try {
-        // Get collections list
-        const response = await fetch("/api/collection/collections-list");
+        // Get collections list - use the correct endpoint
+        const response = await fetch("/api/collection/collections");
         const data = await response.json();
 
         if (response.ok && data.collections) {
@@ -2623,17 +2644,11 @@
       });
     }
 
-    // Initial data load
+    // Initial data load and setup
     document.addEventListener("DOMContentLoaded", function () {
-      // Fetch analytics data
-      fetchAnalytics(null, false);
-
-      // Load collections
-      loadCollections();
+      // Initialize the dashboard
+      initDashboard();
     });
-
-    // Initialize everything
-    initDashboard();
 
     // Add sample items loader
     const sampleButton = document.getElementById("load-sample-items");
