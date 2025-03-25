@@ -487,8 +487,12 @@
               const newNameInput = document.getElementById(
                 "new-collection-name"
               );
-              if (collectionDropdown.value && newNameInput) {
-                newNameInput.value = collectionDropdown.value;
+              if (collectionDropdown.selectedIndex >= 0 && newNameInput) {
+                // Use the selected option's text (collection name) instead of value (collection_id)
+                newNameInput.value =
+                  collectionDropdown.options[
+                    collectionDropdown.selectedIndex
+                  ].text;
               }
 
               // Update on selection change
@@ -497,7 +501,8 @@
                   "new-collection-name"
                 );
                 if (newNameInput) {
-                  newNameInput.value = this.value;
+                  // Use the selected option's text (collection name) instead of value (collection_id)
+                  newNameInput.value = this.options[this.selectedIndex].text;
                 }
               });
             }
