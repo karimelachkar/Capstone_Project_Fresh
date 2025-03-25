@@ -1030,24 +1030,32 @@ def delete_collection(collection_id):
         if check_results.total_rows == 0:
             return jsonify({"error": "Collection not found or you don't have permission to delete it"}), 404
             
-        # Get the collection name for updating items
+        # Get the collection name for logging
         collection_name = next(check_results).collection_name
         
         # Start a transaction (BigQuery doesn't support transactions, so we'll do our best)
-        # 1. Update all items to remove collection_id and collection_name
-        update_items_query = f"""
-            UPDATE `{BQ_COLLECTION_ITEMS_TABLE}`
-            SET collection_id = NULL, collection_name = NULL
+        # 1. Delete all items in the collection
+        delete_items_query = f"""
+            DELETE FROM `{BQ_COLLECTION_ITEMS_TABLE}`
             WHERE user_id = @user_id AND collection_id = @collection_id
         """
         
-        update_items_params = [
+        delete_items_params = [
             bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
             bigquery.ScalarQueryParameter("collection_id", "STRING", collection_id)
         ]
         
-        update_items_job_config = bigquery.QueryJobConfig(query_parameters=update_items_params)
-        client.query(update_items_query, job_config=update_items_job_config).result()
+        delete_items_job_config = bigquery.QueryJobConfig(query_parameters=delete_items_params)
+        delete_items_result = client.query(delete_items_query, job_config=delete_items_job_config).result()
+        
+        # Count deleted items (if possible)
+        items_deleted = 0
+        try:
+            # BigQuery doesn't directly return affected rows count in a standardized way
+            # This is a best effort to get the count through job statistics
+            items_deleted = delete_items_result.total_rows if hasattr(delete_items_result, 'total_rows') else 0
+        except:
+            pass
         
         # 2. Delete the collection
         delete_query = f"""
@@ -1064,9 +1072,9 @@ def delete_collection(collection_id):
         client.query(delete_query, job_config=delete_job_config).result()
         
         return jsonify({
-            "message": "Collection deleted successfully",
+            "message": f"Collection '{collection_name}' and all its items deleted successfully",
             "collection_id": collection_id,
-            "items_updated": True
+            "items_deleted": True
         }), 200
     except Exception as e:
         print(f"[ERROR] Failed to delete collection: {str(e)}")
