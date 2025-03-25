@@ -43,35 +43,47 @@
 
     <!-- JavaScript for Background Slideshow -->
     <script>
-      const images = [
-        "{{ url_for('static', filename='images/img1.png') }}",
-        "{{ url_for('static', filename='images/img2.jpg') }}",
-        "{{ url_for('static', filename='images/img3.jpg') }}",
-        "{{ url_for('static', filename='images/img4.jpg') }}",
-        "{{ url_for('static', filename='images/img5.jpg') }}",
-      ];
-
-      let index = 1; // Start from img2 after img1 loads
-      const heroSection = document.querySelector(".hero");
-
-      // Function to preload all images
-      function preloadImages() {
-        images.forEach((src) => {
-          const img = new Image();
-          img.src = src;
-        });
-      }
-
-      // Function to change the background image
-      function changeBackground() {
-        heroSection.style.backgroundImage = `url('${images[index]}')`;
-        index = (index + 1) % images.length; // Loop through images
-      }
-
-      // Ensure img1 loads immediately when the page is ready
       document.addEventListener("DOMContentLoaded", () => {
+        const images = [
+          "{{ url_for('static', filename='images/img1.png') }}",
+          "{{ url_for('static', filename='images/img2.jpg') }}",
+          "{{ url_for('static', filename='images/img3.jpg') }}",
+          "{{ url_for('static', filename='images/img4.jpg') }}",
+          "{{ url_for('static', filename='images/img5.jpg') }}",
+        ];
+
+        let index = 1; // Start from img2 after img1 loads
+        const heroSection = document.querySelector(".hero");
+
+        if (!heroSection) {
+          console.error("Hero section not found!");
+          return;
+        }
+
+        // Function to preload all images
+        function preloadImages() {
+          images.forEach((src) => {
+            const img = new Image();
+            img.src = src;
+            console.log("Preloading:", src);
+          });
+        }
+
+        // Function to change the background image
+        function changeBackground() {
+          console.log("Changing background to:", images[index]);
+          heroSection.style.backgroundImage = `url('${images[index]}')`;
+          index = (index + 1) % images.length; // Loop through images
+        }
+
+        // Start the carousel
         preloadImages(); // Preload images to prevent flickering
-        heroSection.style.backgroundImage = `url('${images[0]}')`; // Immediately set img1 as background
+
+        // Set the initial background image
+        console.log("Setting initial background:", images[0]);
+        heroSection.style.backgroundImage = `url('${images[0]}')`;
+
+        // Set up the carousel interval
         setTimeout(() => {
           changeBackground(); // Transition to img2 after 7s
           setInterval(changeBackground, 7000); // Continue slideshow
