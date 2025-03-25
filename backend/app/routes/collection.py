@@ -306,7 +306,9 @@ def add_item():
         "collection_name": str,
         "image_url": str (optional),
         "tags": list (optional),
-        "value": float (optional)
+        "value": float (optional),
+        "year": int (optional),
+        "condition": str (optional)
     }
     """
     user_id = session.get('user_id')
@@ -327,6 +329,17 @@ def add_item():
         except ValueError:
             return jsonify({"error": "Value must be a number"}), 400
     
+    # Parse year as int if provided
+    year = None
+    if 'year' in data and data['year']:
+        try:
+            year = int(data['year'])
+        except ValueError:
+            return jsonify({"error": "Year must be a number"}), 400
+    
+    # Get condition if provided, or use default
+    condition = data.get("condition", "Excellent")
+    
     # Prepare item data
     item_data = {
         "item_id": item_id,
@@ -337,8 +350,8 @@ def add_item():
         "image_url": data.get("image_url", ""),
         "tags": data.get("tags", []),
         "value": value,
-        "created_at": datetime.utcnow().isoformat(),
-        "updated_at": datetime.utcnow().isoformat()
+        "year": year,
+        "condition": condition
     }
     
     # Insert item into BigQuery
@@ -347,9 +360,9 @@ def add_item():
     
     query = f"""
         INSERT INTO `{BQ_COLLECTION_ITEMS_TABLE}` 
-        (item_id, user_id, name, description, collection_name, image_url, tags, value, created_at, updated_at)
+        (item_id, user_id, name, description, collection_name, image_url, tags, value, year, condition)
         VALUES 
-        (@item_id, @user_id, @name, @description, @collection_name, @image_url, @tags, @value, @created_at, @updated_at)
+        (@item_id, @user_id, @name, @description, @collection_name, @image_url, @tags, @value, @year, @condition)
     """
     
     job_config = bigquery.QueryJobConfig(
@@ -362,8 +375,8 @@ def add_item():
             bigquery.ScalarQueryParameter("image_url", "STRING", item_data["image_url"]),
             bigquery.ArrayQueryParameter("tags", "STRING", item_data["tags"]),
             bigquery.ScalarQueryParameter("value", "FLOAT", item_data["value"]),
-            bigquery.ScalarQueryParameter("created_at", "STRING", item_data["created_at"]),
-            bigquery.ScalarQueryParameter("updated_at", "STRING", item_data["updated_at"])
+            bigquery.ScalarQueryParameter("year", "INT64", item_data["year"]),
+            bigquery.ScalarQueryParameter("condition", "STRING", item_data["condition"])
         ]
     )
     
@@ -505,7 +518,7 @@ def search_items():
     client._location = "europe-southwest1"
     
     try:
-        # Extremely simple query to start with - just get all items for the user
+        # Query using the actual schema fields
         query_text = f"""
             SELECT 
                 item_id, 
@@ -513,8 +526,8 @@ def search_items():
                 description, 
                 collection_name, 
                 IFNULL(value, 0) as value,
-                CAST(EXTRACT(YEAR FROM created_at) AS INT64) as year,
-                'Excellent' as condition
+                IFNULL(year, 0) as year,
+                IFNULL(condition, 'Unknown') as condition
             FROM `{BQ_COLLECTION_ITEMS_TABLE}`
             WHERE user_id = @user_id
         """
@@ -522,6 +535,56 @@ def search_items():
         params = [
             bigquery.ScalarQueryParameter("user_id", "STRING", user_id)
         ]
+        
+        # Add collection filter if provided
+        if collection_name:
+            query_text += " AND collection_name = @collection_name"
+            params.append(bigquery.ScalarQueryParameter("collection_name", "STRING", collection_name))
+        
+        # Add search query if provided
+        if query:
+            query_text += " AND LOWER(name) LIKE @query"
+            params.append(bigquery.ScalarQueryParameter("query", "STRING", f"%{query.lower()}%"))
+        
+        # Add year filters if provided - using the year field directly
+        if min_year:
+            try:
+                min_year_int = int(min_year)
+                query_text += " AND IFNULL(year, 0) >= @min_year"
+                params.append(bigquery.ScalarQueryParameter("min_year", "INT64", min_year_int))
+            except (ValueError, TypeError):
+                print(f"[WARNING] Invalid min_year value: {min_year}")
+        
+        if max_year:
+            try:
+                max_year_int = int(max_year)
+                query_text += " AND IFNULL(year, 0) <= @max_year"
+                params.append(bigquery.ScalarQueryParameter("max_year", "INT64", max_year_int))
+            except (ValueError, TypeError):
+                print(f"[WARNING] Invalid max_year value: {max_year}")
+        
+        # Add value filters if provided
+        if min_value:
+            try:
+                min_value_float = float(min_value)
+                query_text += " AND IFNULL(value, 0) >= @min_value"
+                params.append(bigquery.ScalarQueryParameter("min_value", "FLOAT64", min_value_float))
+            except (ValueError, TypeError):
+                print(f"[WARNING] Invalid min_value: {min_value}")
+        
+        if max_value:
+            try:
+                max_value_float = float(max_value)
+                query_text += " AND IFNULL(value, 0) <= @max_value"
+                params.append(bigquery.ScalarQueryParameter("max_value", "FLOAT64", max_value_float))
+            except (ValueError, TypeError):
+                print(f"[WARNING] Invalid max_value: {max_value}")
+        
+        # Complete and order the query
+        query_text += " ORDER BY value DESC LIMIT 100"
+        
+        print(f"[DEBUG] Search query: {query_text}")
+        print(f"[DEBUG] Parameters: {params}")
         
         # Create job config
         job_config = bigquery.QueryJobConfig(query_parameters=params)
@@ -547,20 +610,20 @@ def search_items():
             items = [
                 {
                     "item_id": "sample1",
-                    "name": "Sample Item 1",
-                    "description": "This is a sample item for testing",
-                    "collection_name": "Sample Collection",
-                    "value": 100.0,
-                    "year": 2022,
-                    "condition": "Excellent"
+                    "name": "First Edition Charizard",
+                    "description": "Rare Pokémon card in mint condition",
+                    "collection_name": "Rare Pokémon Cards Collection",
+                    "value": 5000.0,
+                    "year": 1999,
+                    "condition": "Mint"
                 },
                 {
                     "item_id": "sample2",
-                    "name": "Sample Item 2",
-                    "description": "Another sample item for testing",
-                    "collection_name": "Sample Collection",
-                    "value": 200.0,
-                    "year": 2023,
+                    "name": "Pikachu Illustrator",
+                    "description": "One of the rarest promotional cards",
+                    "collection_name": "Rare Pokémon Cards Collection",
+                    "value": 250000.0,
+                    "year": 1998,
                     "condition": "Excellent"
                 }
             ]
@@ -1000,388 +1063,6 @@ def edit_collection(collection_id):
         print(f"[ERROR] Failed to update collection: {str(e)}")
         return jsonify({"error": "Failed to update collection", "details": str(e)}), 500
 
-@collection_blueprint.route("/delete", methods=["POST"])
-@login_required
-def delete_collection_post():
-    """
-    API endpoint to delete a collection and all its items.
-    
-    Expected JSON payload:
-    {
-        "collection_name": str
-    }
-    """
-    user_id = session.get('user_id')
-    data = request.get_json()
-    
-    if not data.get("collection_name"):
-        return jsonify({"error": "Collection name is required"}), 400
-    
-    collection_name = data.get("collection_name")
-    
-    client = get_bigquery_client()
-    client._location = "europe-southwest1"
-    
-    try:
-        # First delete all items in the collection
-        delete_items_query = f"""
-            DELETE FROM `{BQ_COLLECTION_ITEMS_TABLE}`
-            WHERE user_id = @user_id
-            AND collection_name = @collection_name
-        """
-        
-        delete_items_job_config = bigquery.QueryJobConfig(
-            query_parameters=[
-                bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
-                bigquery.ScalarQueryParameter("collection_name", "STRING", collection_name)
-            ]
-        )
-        
-        client.query(delete_items_query, job_config=delete_items_job_config).result()
-        
-        # Then delete the collection itself
-        delete_collection_query = f"""
-            DELETE FROM `{BQ_COLLECTIONS_TABLE}`
-            WHERE user_id = @user_id
-            AND collection_name = @collection_name
-        """
-        
-        delete_collection_job_config = bigquery.QueryJobConfig(
-            query_parameters=[
-                bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
-                bigquery.ScalarQueryParameter("collection_name", "STRING", collection_name)
-            ]
-        )
-        
-        client.query(delete_collection_query, job_config=delete_collection_job_config).result()
-        
-        return jsonify({"message": "Collection and its items deleted successfully"}), 200
-    except Exception as e:
-        print(f"[ERROR] Failed to delete collection: {str(e)}")
-        return jsonify({"error": "Failed to delete collection", "details": str(e)}), 500
-
-@collection_blueprint.route("/delete/<string:collection_id>", methods=["DELETE"])
-@login_required
-def delete_collection(collection_id):
-    """
-    API endpoint to delete a collection by its ID.
-    
-    Args:
-        collection_id (str): The ID of the collection to delete
-    """
-    user_id = session.get('user_id')
-    
-    client = get_bigquery_client()
-    client._location = "europe-southwest1"
-    
-    try:
-        # First get the collection name
-        get_name_query = f"""
-            SELECT collection_name
-            FROM `{BQ_COLLECTIONS_TABLE}`
-            WHERE collection_id = @collection_id
-            AND user_id = @user_id
-        """
-        
-        get_name_job_config = bigquery.QueryJobConfig(
-            query_parameters=[
-                bigquery.ScalarQueryParameter("collection_id", "STRING", collection_id),
-                bigquery.ScalarQueryParameter("user_id", "STRING", user_id)
-            ]
-        )
-        
-        name_result = client.query(get_name_query, job_config=get_name_job_config).result()
-        collection = next(name_result, None)
-        
-        if not collection:
-            return jsonify({"error": "Collection not found"}), 404
-        
-        collection_name = collection.collection_name
-        
-        # Delete all items in the collection
-        delete_items_query = f"""
-            DELETE FROM `{BQ_COLLECTION_ITEMS_TABLE}`
-            WHERE user_id = @user_id
-            AND collection_name = @collection_name
-        """
-        
-        delete_items_job_config = bigquery.QueryJobConfig(
-            query_parameters=[
-                bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
-                bigquery.ScalarQueryParameter("collection_name", "STRING", collection_name)
-            ]
-        )
-        
-        client.query(delete_items_query, job_config=delete_items_job_config).result()
-        
-        # Delete the collection
-        delete_collection_query = f"""
-            DELETE FROM `{BQ_COLLECTIONS_TABLE}`
-            WHERE collection_id = @collection_id
-            AND user_id = @user_id
-        """
-        
-        delete_collection_job_config = bigquery.QueryJobConfig(
-            query_parameters=[
-                bigquery.ScalarQueryParameter("collection_id", "STRING", collection_id),
-                bigquery.ScalarQueryParameter("user_id", "STRING", user_id)
-            ]
-        )
-        
-        client.query(delete_collection_query, job_config=delete_collection_job_config).result()
-        
-        return jsonify({"message": "Collection and its items deleted successfully"}), 200
-    except Exception as e:
-        print(f"[ERROR] Failed to delete collection: {str(e)}")
-        return jsonify({"error": "Failed to delete collection", "details": str(e)}), 500
-
-@collection_blueprint.route("/debug", methods=["GET"])
-@login_required
-def debug_data():
-    """
-    Debug endpoint to get detailed information about the user's data.
-    Only accessible to admin users.
-    """
-    # Only allow specific admin users
-    admin_users = ["admin@example.com"]  # Replace with actual admin users
-    user_id = session.get('user_id')
-    
-    if user_id not in admin_users:
-        return jsonify({"error": "Unauthorized access"}), 403
-    
-    client = get_bigquery_client()
-    client._location = "europe-southwest1"
-    
-    try:
-        # Get all user data
-        query = f"""
-            SELECT * FROM `{BQ_COLLECTION_ITEMS_TABLE}`
-            WHERE user_id = @user_id
-        """
-        
-        job_config = bigquery.QueryJobConfig(
-            query_parameters=[
-                bigquery.ScalarQueryParameter("user_id", "STRING", user_id)
-            ]
-        )
-        
-        results = client.query(query, job_config=job_config).result()
-        items = [dict(row) for row in results]
-        
-        return jsonify({
-            "user_id": user_id,
-            "items": items
-        }), 200
-    except Exception as e:
-        print(f"[ERROR] Debug data query failed: {str(e)}")
-        return jsonify({"error": "Failed to get debug data", "details": str(e)}), 500
-
-@collection_blueprint.route("/collections-list", methods=["GET"])
-@login_required
-def get_collections_list():
-    """
-    API endpoint to get a detailed list of all collections with their items.
-    Returns collections with item counts and basic statistics.
-    """
-    user_id = session.get('user_id')
-    
-    client = get_bigquery_client()
-    client._location = "europe-southwest1"
-    
-    try:
-        # Get collection names and counts
-        query = f"""
-            SELECT 
-                collection_name,
-                COUNT(*) as item_count,
-                SUM(IFNULL(value, 0)) as total_value
-            FROM `{BQ_COLLECTION_ITEMS_TABLE}`
-            WHERE user_id = @user_id
-            AND collection_name IS NOT NULL
-            AND TRIM(collection_name) != ''
-            GROUP BY collection_name
-            ORDER BY item_count DESC
-        """
-        
-        job_config = bigquery.QueryJobConfig(
-            query_parameters=[
-                bigquery.ScalarQueryParameter("user_id", "STRING", user_id)
-            ]
-        )
-        
-        # Execute the query
-        results = client.query(query, job_config=job_config).result()
-        collections = [dict(row) for row in results]
-        
-        # If we don't have any collections from the query, create an empty list
-        if not collections:
-            return jsonify({"collections": []}), 200
-            
-        # Return the collections data
-        return jsonify({"collections": collections}), 200
-    except Exception as e:
-        import traceback
-        print(f"[ERROR] Failed to get collections list: {str(e)}")
-        print(f"[ERROR] Traceback: {traceback.format_exc()}")
-        return jsonify({"error": "Failed to get collections list", "details": str(e)}), 500
-
-@collection_blueprint.route("/export/<string:collection_name>", methods=["GET"])
-@login_required
-def export_collection(collection_name):
-    """
-    API endpoint to export a collection's items to CSV format.
-    
-    Args:
-        collection_name (str): The name of the collection to export
-    """
-    user_id = session.get('user_id')
-    
-    client = get_bigquery_client()
-    client._location = "europe-southwest1"
-    
-    query = f"""
-        SELECT 
-            name,
-            description,
-            collection_name,
-            image_url,
-            tags,
-            created_at,
-            updated_at
-        FROM `{BQ_COLLECTION_ITEMS_TABLE}`
-        WHERE user_id = @user_id
-        AND collection_name = @collection_name
-        ORDER BY created_at DESC
-    """
-    
-    job_config = bigquery.QueryJobConfig(
-        query_parameters=[
-            bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
-            bigquery.ScalarQueryParameter("collection_name", "STRING", collection_name)
-        ]
-    )
-    
-    try:
-        results = client.query(query, job_config=job_config).result()
-        items = [dict(row) for row in results]
-        
-        # Create CSV in memory
-        output = io.StringIO()
-        writer = csv.writer(output)
-        
-        # Write header
-        writer.writerow([
-            "Name",
-            "Description",
-            "Collection",
-            "Image URL",
-            "Tags",
-            "Created At",
-            "Updated At"
-        ])
-        
-        # Write data
-        for item in items:
-            writer.writerow([
-                item["name"],
-                item["description"],
-                item["collection_name"],
-                item["image_url"],
-                ", ".join(item["tags"]),
-                item["created_at"],
-                item["updated_at"]
-            ])
-        
-        # Create response
-        response = Response(
-            output.getvalue(),
-            mimetype="text/csv",
-            headers={
-                "Content-Disposition": f"attachment; filename={collection_name}_export.csv"
-            }
-        )
-        
-        return response
-    except Exception as e:
-        print(f"[ERROR] Failed to export collection: {str(e)}")
-        return jsonify({"error": "Failed to export collection", "details": str(e)}), 500
-
-@collection_blueprint.route("/debug-collection", methods=["GET"])
-@login_required
-def debug_collection():
-    """
-    Debug endpoint to get information about the collection_items table
-    """
-    user_id = session.get('user_id')
-    
-    client = get_bigquery_client()
-    client._location = "europe-southwest1"
-    
-    output = {}
-    
-    try:
-        # Check if collection_items table exists and get its schema
-        try:
-            items_table_id = BQ_COLLECTION_ITEMS_TABLE.split('.')[-1]
-            dataset_id = BQ_DATASET.split('.')[0]
-            table_path = f"{client.project}.{dataset_id}.{items_table_id}"
-            table = client.get_table(table_path)
-            
-            # Get schema
-            output["schema"] = {
-                "table_id": table.table_id,
-                "fields": [{"name": f.name, "type": f.field_type, "mode": f.mode} for f in table.schema]
-            }
-            
-            # Get sample data (first 5 rows)
-            query = f"""
-                SELECT * FROM `{BQ_COLLECTION_ITEMS_TABLE}`
-                WHERE user_id = @user_id
-                LIMIT 5
-            """
-            
-            job_config = bigquery.QueryJobConfig(
-                query_parameters=[
-                    bigquery.ScalarQueryParameter("user_id", "STRING", user_id)
-                ]
-            )
-            
-            results = client.query(query, job_config=job_config).result()
-            items = [dict(row) for row in results]
-            output["sample_data"] = items
-            
-            # Get counts 
-            count_query = f"""
-                SELECT COUNT(*) as total FROM `{BQ_COLLECTION_ITEMS_TABLE}`
-                WHERE user_id = @user_id
-            """
-            
-            count_results = client.query(count_query, job_config=job_config).result()
-            output["counts"] = {"total_items": next(count_results).total}
-            
-            # Get collection counts
-            collections_query = f"""
-                SELECT collection_name, COUNT(*) as count 
-                FROM `{BQ_COLLECTION_ITEMS_TABLE}`
-                WHERE user_id = @user_id
-                AND collection_name IS NOT NULL
-                AND TRIM(collection_name) != ''
-                GROUP BY collection_name
-            """
-            
-            collections_results = client.query(collections_query, job_config=job_config).result()
-            output["collections"] = [dict(row) for row in collections_results]
-            
-            return jsonify(output), 200
-        except Exception as e:
-            return jsonify({"error": f"Error getting table info: {str(e)}"}), 500
-            
-    except Exception as e:
-        import traceback
-        print(f"[ERROR] Debug endpoint failed: {str(e)}")
-        print(f"[ERROR] Traceback: {traceback.format_exc()}")
-        return jsonify({"error": "Debug failed", "details": str(e)}), 500
-
 @collection_blueprint.route("/sample_items", methods=["GET"])
 def sample_items():
     """Temporary endpoint to return sample items for testing"""
@@ -1418,7 +1099,7 @@ def sample_items():
             "item_id": "sample4",
             "name": "Ancient Mew",
             "description": "Movie promotional card",
-            "collection_name": "Rare Pokémon Cards Collection",
+            "collection_name": "Pokémon Movie Promos",
             "value": 200.0,
             "year": 2000,
             "condition": "Good"
@@ -1427,7 +1108,7 @@ def sample_items():
             "item_id": "sample5",
             "name": "Mewtwo GX Rainbow Rare",
             "description": "Modern collectible",
-            "collection_name": "Rare Pokémon Cards Collection",
+            "collection_name": "Modern Pokémon Cards",
             "value": 80.0,
             "year": 2019,
             "condition": "Mint"
@@ -1462,11 +1143,9 @@ def ensure_tables_exist():
         except Exception:
             print(f"[INFO] Creating table {collections_table_id}")
             collections_schema = [
+                bigquery.SchemaField("collection_id", "STRING", mode="REQUIRED"),
                 bigquery.SchemaField("user_id", "STRING", mode="REQUIRED"),
-                bigquery.SchemaField("collection_name", "STRING", mode="REQUIRED"),
-                bigquery.SchemaField("description", "STRING", mode="NULLABLE"),
-                bigquery.SchemaField("created_at", "TIMESTAMP", mode="NULLABLE"),
-                bigquery.SchemaField("updated_at", "TIMESTAMP", mode="NULLABLE")
+                bigquery.SchemaField("collection_name", "STRING", mode="REQUIRED")
             ]
             table = bigquery.Table(f"{client.project}.{dataset_id}.{collections_table_id}", schema=collections_schema)
             client.create_table(table, exists_ok=True)
@@ -1479,15 +1158,15 @@ def ensure_tables_exist():
         except Exception:
             print(f"[INFO] Creating table {items_table_id}")
             items_schema = [
-                bigquery.SchemaField("user_id", "STRING", mode="REQUIRED"),
-                bigquery.SchemaField("item_id", "STRING", mode="REQUIRED"),
-                bigquery.SchemaField("collection_name", "STRING", mode="NULLABLE"),
+                bigquery.SchemaField("item_id", "STRING", mode="NULLABLE"),
+                bigquery.SchemaField("user_id", "STRING", mode="NULLABLE"),
                 bigquery.SchemaField("name", "STRING", mode="NULLABLE"),
                 bigquery.SchemaField("description", "STRING", mode="NULLABLE"),
+                bigquery.SchemaField("collection_name", "STRING", mode="NULLABLE"),
                 bigquery.SchemaField("value", "FLOAT", mode="NULLABLE"),
-                bigquery.SchemaField("tags", "STRING", mode="REPEATED"),
-                bigquery.SchemaField("created_at", "TIMESTAMP", mode="NULLABLE"),
-                bigquery.SchemaField("updated_at", "TIMESTAMP", mode="NULLABLE")
+                bigquery.SchemaField("year", "INTEGER", mode="NULLABLE"),
+                bigquery.SchemaField("condition", "STRING", mode="NULLABLE"),
+                bigquery.SchemaField("tags", "STRING", mode="REPEATED")
             ]
             table = bigquery.Table(f"{client.project}.{dataset_id}.{items_table_id}", schema=items_schema)
             client.create_table(table, exists_ok=True)
