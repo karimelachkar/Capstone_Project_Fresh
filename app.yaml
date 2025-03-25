@@ -7,7 +7,12 @@ env_variables:
   SESSION_TYPE: "filesystem"
 
 handlers:
-  # Static files handler - explicitly define static file handling
+  # Handle image files explicitly
+  - url: /static/images/(.*\.(png|jpg|jpeg|gif))
+    static_files: capstone_frontend_karim/static/images/\1
+    upload: capstone_frontend_karim/static/images/.*\.(png|jpg|jpeg|gif)
+
+  # Handle other static files
   - url: /static
     static_dir: capstone_frontend_karim/static
 

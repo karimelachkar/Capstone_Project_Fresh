@@ -44,8 +44,17 @@
     <!-- JavaScript for Background Slideshow -->
     <script>
       document.addEventListener("DOMContentLoaded", () => {
-        // Define background colors as fallback
-        const backgroundColors = [
+        // Define images with proper paths
+        const images = [
+          "/static/images/img1.png",
+          "/static/images/img2.jpg",
+          "/static/images/img3.jpg",
+          "/static/images/img4.jpg",
+          "/static/images/img5.jpg",
+        ];
+
+        // Fallback colors if images fail to load
+        const fallbackColors = [
           "#4A6572",
           "#344955",
           "#232F34",
@@ -55,31 +64,112 @@
 
         let index = 0;
         const heroSection = document.querySelector(".hero");
+        let usingFallback = false;
 
         if (!heroSection) {
           console.error("Hero section not found!");
           return;
         }
 
-        // Function to change the background color
+        // Function to preload all images and check if they load
+        function preloadImages() {
+          console.log("Starting to preload images...");
+          let loadedCount = 0;
+          let failedCount = 0;
+
+          return new Promise((resolve) => {
+            // If no images to preload, resolve immediately
+            if (images.length === 0) {
+              resolve(false);
+              return;
+            }
+
+            images.forEach((src, i) => {
+              const img = new Image();
+
+              img.onload = function () {
+                console.log(`Successfully loaded: ${src}`);
+                loadedCount++;
+                if (loadedCount + failedCount === images.length) {
+                  resolve(failedCount < images.length);
+                }
+              };
+
+              img.onerror = function () {
+                console.error(`Failed to load: ${src}`);
+                failedCount++;
+                if (loadedCount + failedCount === images.length) {
+                  resolve(failedCount < images.length);
+                }
+              };
+
+              img.src = src;
+              console.log(`Attempting to preload: ${src}`);
+            });
+
+            // Timeout as a safeguard
+            setTimeout(() => {
+              if (loadedCount + failedCount < images.length) {
+                console.warn(
+                  "Preload timed out, some images didn't load in time"
+                );
+                resolve(loadedCount > 0);
+              }
+            }, 5000);
+          });
+        }
+
+        // Function to change the background
         function changeBackground() {
-          console.log("Changing background color to:", backgroundColors[index]);
-          heroSection.style.backgroundColor = backgroundColors[index];
-          index = (index + 1) % backgroundColors.length; // Loop through colors
+          if (usingFallback) {
+            // Using color fallback
+            console.log(`Using fallback color: ${fallbackColors[index]}`);
+            heroSection.style.backgroundImage = "none";
+            heroSection.style.backgroundColor = fallbackColors[index];
+          } else {
+            // Using images
+            console.log(`Changing background to image: ${images[index]}`);
+            heroSection.style.backgroundImage = `url('${images[index]}')`;
+          }
+
+          // Increment index for next change
+          index =
+            (index + 1) %
+            (usingFallback ? fallbackColors.length : images.length);
         }
 
-        // Set up the carousel
-        try {
-          // Set initial background
-          heroSection.style.backgroundColor = backgroundColors[0];
+        // Initialize the slideshow
+        async function initSlideshow() {
+          try {
+            console.log("Initializing slideshow...");
+            // First try to preload images
+            const imagesLoaded = await preloadImages();
 
-          // Change background every 7 seconds
-          setInterval(changeBackground, 7000);
-        } catch (error) {
-          console.error("Error in color slideshow:", error);
-          // Fallback to a single color if there's an error
-          heroSection.style.backgroundColor = "#777";
+            // Determine if we should use images or fallback
+            usingFallback = !imagesLoaded;
+            console.log(
+              `Using ${
+                usingFallback ? "fallback colors" : "images"
+              } for slideshow`
+            );
+
+            // Set initial background
+            index = 0;
+            changeBackground();
+
+            // Set up interval for changing background
+            setInterval(changeBackground, 7000);
+          } catch (error) {
+            console.error("Error in slideshow:", error);
+            // Use fallback if there's an error
+            usingFallback = true;
+            heroSection.style.backgroundImage = "none";
+            heroSection.style.backgroundColor = fallbackColors[0];
+          }
         }
+
+        // Start the slideshow
+        initSlideshow();
       });
     </script>
   </body>
