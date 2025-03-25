@@ -541,7 +541,7 @@ def search_items():
     API endpoint to search for items in collections.
     Query parameters:
     - query: Search query
-    - collection_name: Filter by collection
+    - collection_name: Filter by collection (can be collection_id or collection_name)
     - min_year, max_year: Filter by year range
     - min_value, max_value: Filter by value range
     """
@@ -550,7 +550,7 @@ def search_items():
     
     # Get query parameters
     query = request.args.get('query', '')
-    collection_name = request.args.get('collection_name', '')
+    collection_filter = request.args.get('collection_name', '')  # This could be collection_id now
     min_year = request.args.get('min_year', '')
     max_year = request.args.get('max_year', '')
     min_value = request.args.get('min_value', '')
@@ -579,10 +579,11 @@ def search_items():
             bigquery.ScalarQueryParameter("user_id", "STRING", user_id)
         ]
         
-        # Add collection filter if provided
-        if collection_name:
-            query_text += " AND collection_name = @collection_name"
-            params.append(bigquery.ScalarQueryParameter("collection_name", "STRING", collection_name))
+        # Add collection filter if provided - can be collection_id or collection_name
+        if collection_filter:
+            # First try to filter by collection_id
+            query_text += " AND collection_id = @collection_filter"
+            params.append(bigquery.ScalarQueryParameter("collection_filter", "STRING", collection_filter))
         
         # Add search query if provided
         if query:
