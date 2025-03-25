@@ -54,6 +54,53 @@ def signup():
     # Validate input
     if not username or not email or not password:
         return jsonify({"error": "Missing required fields"}), 400
+        
+    # Check for duplicate username and email
+    client = get_bigquery_client()
+    
+    # Check if username already exists
+    username_check_query = f"""
+        SELECT COUNT(*) as count 
+        FROM `{BQ_USERS_TABLE}` 
+        WHERE LOWER(username) = LOWER(@username)
+    """
+    username_job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("username", "STRING", username),
+        ]
+    )
+    
+    try:
+        username_results = client.query(username_check_query, job_config=username_job_config).result()
+        username_count = list(username_results)[0].count
+        
+        if username_count > 0:
+            return jsonify({"error": "Username already taken"}), 409
+    except Exception as e:
+        print(f"[ERROR] Username check error: {str(e)}")
+        return jsonify({"error": "Error checking username availability"}), 500
+    
+    # Check if email already exists
+    email_check_query = f"""
+        SELECT COUNT(*) as count 
+        FROM `{BQ_USERS_TABLE}` 
+        WHERE LOWER(email) = LOWER(@email)
+    """
+    email_job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("email", "STRING", email),
+        ]
+    )
+    
+    try:
+        email_results = client.query(email_check_query, job_config=email_job_config).result()
+        email_count = list(email_results)[0].count
+        
+        if email_count > 0:
+            return jsonify({"error": "Email already registered"}), 409
+    except Exception as e:
+        print(f"[ERROR] Email check error: {str(e)}")
+        return jsonify({"error": "Error checking email availability"}), 500
 
     # Generate unique user_id using UUID
     user_id = str(uuid.uuid4())
@@ -62,12 +109,11 @@ def signup():
     hashed_password = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
     # Insert user into BigQuery database
-    client = get_bigquery_client()
-    query = f"""
+    insert_query = f"""
         INSERT INTO `{BQ_USERS_TABLE}` (user_id, username, email, password)
         VALUES (@user_id, @username, @email, @password)
     """
-    job_config = bigquery.QueryJobConfig(
+    insert_job_config = bigquery.QueryJobConfig(
         query_parameters=[
             bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
             bigquery.ScalarQueryParameter("username", "STRING", username),
@@ -76,11 +122,11 @@ def signup():
         ]
     )
     try:
-        query_job = client.query(query, job_config=job_config)
+        query_job = client.query(insert_query, job_config=insert_job_config)
         query_job.result()  # Ensure execution
         return jsonify({"message": "User registered successfully"}), 201
     except Exception as e:
-        print("BigQuery INSERT Error:", str(e))  # Debugging info
+        print("[ERROR] BigQuery INSERT Error:", str(e))  # Debugging info
         return jsonify({"error": "Failed to register user", "details": str(e)}), 500
 
 @auth_blueprint.route("/login", methods=["POST"])
