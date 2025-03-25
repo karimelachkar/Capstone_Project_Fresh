@@ -655,46 +655,57 @@
         // Show loading state
         resultsArea.innerHTML = '<p class="loading">Searching items...</p>';
 
-        // Build query URL with all parameters
-        let url = "/api/collection/search?";
-
-        // Add search query if provided
-        const query = searchQuery.value.trim();
-        if (query) {
-          url += `query=${encodeURIComponent(query)}&`;
-        }
-
-        // Add collection filter if selected
-        const collection = document.getElementById("filter-collection").value;
-        if (collection) {
-          url += `collection_name=${encodeURIComponent(collection)}&`;
-        }
-
-        // Add year range if provided
-        const minYear = document.getElementById("min-year").value;
-        if (minYear) {
-          url += `min_year=${encodeURIComponent(minYear)}&`;
-        }
-
-        const maxYear = document.getElementById("max-year").value;
-        if (maxYear) {
-          url += `max_year=${encodeURIComponent(maxYear)}&`;
-        }
-
-        // Add value range if provided
-        const minValue = document.getElementById("min-value").value;
-        if (minValue) {
-          url += `min_value=${encodeURIComponent(minValue)}&`;
-        }
-
-        const maxValue = document.getElementById("max-value").value;
-        if (maxValue) {
-          url += `max_value=${encodeURIComponent(maxValue)}&`;
-        }
-
         try {
+          // Build query URL with all parameters
+          let params = new URLSearchParams();
+
+          // Add search query if provided
+          const query = searchQuery.value.trim();
+          if (query) {
+            params.append("query", query);
+          }
+
+          // Add collection filter if selected
+          const collection = document.getElementById("filter-collection").value;
+          if (collection) {
+            params.append("collection_name", collection);
+          }
+
+          // Add year range if provided
+          const minYear = document.getElementById("min-year").value;
+          if (minYear) {
+            params.append("min_year", minYear);
+          }
+
+          const maxYear = document.getElementById("max-year").value;
+          if (maxYear) {
+            params.append("max_year", maxYear);
+          }
+
+          // Add value range if provided
+          const minValue = document.getElementById("min-value").value;
+          if (minValue) {
+            params.append("min_value", minValue);
+          }
+
+          const maxValue = document.getElementById("max-value").value;
+          if (maxValue) {
+            params.append("max_value", maxValue);
+          }
+
+          console.log("Search params:", Object.fromEntries(params.entries()));
+
+          // Log details for debugging
+          const url = `/api/collection/search?${params.toString()}`;
+          console.log("Search URL:", url);
+
           const response = await fetch(url);
+          if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+          }
+
           const data = await response.json();
+          console.log("Search results:", data);
           displaySearchResults(data);
         } catch (error) {
           console.error("Error searching items:", error);
