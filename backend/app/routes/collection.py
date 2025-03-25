@@ -913,7 +913,7 @@ def get_collection_analytics():
         except Exception as e:
             print(f"[WARNING] Failed to get collection values: {str(e)}")
         
-        # Generate evolution data using real collection values
+        # Get evolution data - using only real collection data
         evolution_data = {
             "labels": ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
             "datasets": []
@@ -923,103 +923,57 @@ def get_collection_analytics():
             # Check if we need to filter by collection
             evolution_filter = request.args.get('evolution_filter')
             
-            print(f"[DEBUG] Evolution generation - all collection_values: {collection_values}")
+            print(f"[DEBUG] Getting real evolution data for collections")
             
-            # Filter collections if requested
-            evolution_collections = []
-            if evolution_filter:
-                print(f"[DEBUG] Evolution filter applied: {evolution_filter}")
-                evolution_collections = [c for c in collection_values if c['collection_id'] == evolution_filter]
-                if not evolution_collections:
-                    # Try to match by collection name if ID didn't work
-                    evolution_collections = [c for c in collection_values if c['collection_name'] == evolution_filter]
-            else:
-                # Use all collections by value
-                evolution_collections = collection_values if collection_values else []
-            
-            print(f"[DEBUG] Evolution collections after filtering: {evolution_collections}")
-            
-            # Create datasets for each collection with non-zero value
-            for idx, collection in enumerate(evolution_collections):
-                collection_name = collection['collection_name']
+            # Use the actual collection values without generating growth curves
+            if collection_values:
+                # Filter collections if requested
+                filtered_collections = []
+                if evolution_filter:
+                    print(f"[DEBUG] Evolution filter applied: {evolution_filter}")
+                    filtered_collections = [c for c in collection_values if c['collection_id'] == evolution_filter]
+                    if not filtered_collections:
+                        filtered_collections = [c for c in collection_values if c['collection_name'] == evolution_filter]
+                else:
+                    # Use all collections with value > 0
+                    filtered_collections = [c for c in collection_values if float(c.get('total_value', 0) or 0) > 0]
                 
-                # Get actual total value and item count - ensure they are numbers
-                total_value = float(collection.get('total_value', 0) or 0)
-                total_items = int(collection.get('item_count', 0) or 0)
+                print(f"[DEBUG] Using {len(filtered_collections)} collections for evolution chart")
                 
-                # Skip collections with zero value - they don't contribute to the graph
-                if total_value <= 0:
-                    print(f"[DEBUG] Skipping collection {collection_name} with zero value")
-                    continue
+                # Add each collection as a flat line showing current value
+                # This is the most honest representation without historical data
+                for idx, collection in enumerate(filtered_collections):
+                    collection_name = collection['collection_name']
+                    total_value = float(collection.get('total_value', 0) or 0)
+                    item_count = int(collection.get('item_count', 0) or 0)
                     
-                print(f"[DEBUG] Adding evolution data for {collection_name} with value {total_value}")
-                
-                # Create a growth curve from 0 to current value
-                items_count_data = []
-                value_data = []
-                
-                # Generate data showing growth over 6 months
-                for i in range(6):
-                    # More realistic growth curve (slower start, faster end)
-                    growth_factor = ((i + 1) / 6) ** 1.5  # Use exponential growth pattern
+                    if total_value <= 0:
+                        print(f"[DEBUG] Skipping collection {collection_name} with zero value")
+                        continue
+                        
+                    print(f"[DEBUG] Adding evolution data for {collection_name}: current value={total_value}, items={item_count}")
                     
-                    # Apply growth factor to get values
-                    month_items = max(1, round(total_items * growth_factor))
-                    month_value = max(100, round(total_value * growth_factor))
-                    
-                    items_count_data.append(month_items)
-                    value_data.append(month_value)
-                
-                # Ensure the final month matches the current total
-                items_count_data[-1] = total_items
-                value_data[-1] = int(total_value)
-                
-                print(f"[DEBUG] Evolution data for {collection_name}: Items={items_count_data}, Values={value_data}")
-                
-                evolution_data['datasets'].append({
-                    "label": collection_name,
-                    "items_count": items_count_data,
-                    "value_data": value_data,
-                    "color": f"hsl({(idx * 60) % 360}, 70%, 50%)"
-                })
+                    # Create flat line showing current values for each month
+                    # This shows the current state without misleading growth patterns
+                    evolution_data['datasets'].append({
+                        "label": collection_name,
+                        "items_count": [item_count] * 6,  # Same value for all months
+                        "value_data": [total_value] * 6,  # Same value for all months
+                        "color": f"hsl({(idx * 60) % 360}, 70%, 50%)"
+                    })
             
-            # If no datasets were added (perhaps all collections had 0 value), create at least one
-            if not evolution_data['datasets'] and collection_values:
-                # Use the first collection, even if it has zero value
-                first_collection = collection_values[0]
-                collection_name = first_collection['collection_name']
-                
-                print(f"[DEBUG] No collections with value > 0, using {collection_name} as base")
-                
-                # Create growth data from 0 to a small amount
-                evolution_data['datasets'].append({
-                    "label": collection_name,
-                    "items_count": [1, 2, 3, 4, 5, max(6, int(first_collection.get('item_count', 0) or 0))],
-                    "value_data": [100, 200, 500, 800, 1200, max(1500, int(first_collection.get('total_value', 0) or 0))],
-                    "color": "hsl(180, 70%, 50%)"
-                })
-            # If we have no collections at all, use a clearly labeled sample dataset
-            elif not evolution_data['datasets']:
-                print("[DEBUG] No collections found at all, using labeled sample data")
-                evolution_data['datasets'].append({
-                    "label": "Sample Data (Add collections to see real data)",
-                    "items_count": [1, 2, 3, 4, 5, 6],
-                    "value_data": [100, 200, 400, 700, 1000, 1500],
-                    "color": "hsl(180, 70%, 50%)"
-                })
+            # If no datasets were added, leave the datasets empty
+            if not evolution_data['datasets']:
+                print("[DEBUG] No collections with value > 0 found for evolution chart")
+                # Return empty datasets array, don't add fake data
                 
         except Exception as e:
-            print(f"[ERROR] Failed to generate evolution data: {str(e)}")
+            print(f"[ERROR] Failed to get evolution data: {str(e)}")
             import traceback
             print(f"[ERROR] Traceback: {traceback.format_exc()}")
             
-            # Use fallback data with a clear label
-            evolution_data['datasets'] = [{
-                "label": "Sample Data (Error loading real data)",
-                "items_count": [1, 2, 3, 4, 5, 6],
-                "value_data": [100, 200, 400, 700, 1000, 1500],
-                "color": "hsl(180, 70%, 50%)"
-            }]
+            # Return empty datasets rather than fake data
+            evolution_data['datasets'] = []
         
         # Return all the data needed by the frontend
         return jsonify({
