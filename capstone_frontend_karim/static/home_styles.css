@@ -19,24 +19,26 @@ nav a {
 
 /* Fullscreen Hero Section with Background Slideshow */
 .hero {
-  width: 100%;
-  height: 100vh; /* Full viewport height */
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  transition: background-image 1s ease-in-out;
+  height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
+  background-color: #4a6572; /* Initial background color */
+  color: white;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  transition: background-color 1.5s ease; /* Smooth transition between colors */
 }
 
-/* Dark overlay to improve text readability */
+/* Use a semi-transparent overlay to improve text readability */
 .hero-overlay {
-  text-align: center;
-  background: rgba(0, 0, 0, 0.5); /* Semi-transparent dark overlay */
-  padding: 50px;
+  background-color: rgba(0, 0, 0, 0.5);
+  padding: 2rem;
   border-radius: 10px;
-  color: white;
+  max-width: 800px;
+  width: 90%;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
 }
 
 .hero h1 {

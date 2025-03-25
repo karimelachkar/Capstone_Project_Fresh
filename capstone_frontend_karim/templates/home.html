@@ -44,16 +44,16 @@
     <!-- JavaScript for Background Slideshow -->
     <script>
       document.addEventListener("DOMContentLoaded", () => {
-        // Use Flask's url_for to get proper image URLs
-        const images = [
-          "{{ url_for('static', filename='images/img1.png') }}",
-          "{{ url_for('static', filename='images/img2.jpg') }}",
-          "{{ url_for('static', filename='images/img3.jpg') }}",
-          "{{ url_for('static', filename='images/img4.jpg') }}",
-          "{{ url_for('static', filename='images/img5.jpg') }}",
+        // Define background colors as fallback
+        const backgroundColors = [
+          "#4A6572",
+          "#344955",
+          "#232F34",
+          "#4CAF50",
+          "#F9AA33",
         ];
 
-        let index = 1; // Start from img2 after img1 loads
+        let index = 0;
         const heroSection = document.querySelector(".hero");
 
         if (!heroSection) {
@@ -61,51 +61,24 @@
           return;
         }
 
-        // Function to preload all images
-        function preloadImages() {
-          images.forEach((src) => {
-            const img = new Image();
-            img.src = src;
-            console.log("Preloading:", src);
-          });
-        }
-
-        // Function to change the background image
+        // Function to change the background color
         function changeBackground() {
-          console.log("Changing background to:", images[index]);
-          heroSection.style.backgroundImage = `url('${images[index]}')`;
-          index = (index + 1) % images.length; // Loop through images
+          console.log("Changing background color to:", backgroundColors[index]);
+          heroSection.style.backgroundColor = backgroundColors[index];
+          index = (index + 1) % backgroundColors.length; // Loop through colors
         }
 
-        // Add a fallback in case images fail to load
-        function handleImageError() {
-          // Use a solid color background if images fail to load
-          heroSection.style.backgroundImage = "none";
-          heroSection.style.backgroundColor = "#777"; // Gray background as fallback
-          console.error("Failed to load background images");
-        }
-
-        // Start the carousel with error handling
+        // Set up the carousel
         try {
-          preloadImages(); // Preload images to prevent flickering
+          // Set initial background
+          heroSection.style.backgroundColor = backgroundColors[0];
 
-          // Set the initial background image with error handling
-          console.log("Setting initial background:", images[0]);
-          const initialImage = new Image();
-          initialImage.onload = () => {
-            heroSection.style.backgroundImage = `url('${images[0]}')`;
-          };
-          initialImage.onerror = handleImageError;
-          initialImage.src = images[0];
-
-          // Set up the carousel interval
-          setTimeout(() => {
-            changeBackground(); // Transition to img2 after 7s
-            setInterval(changeBackground, 7000); // Continue slideshow
-          }, 7000);
+          // Change background every 7 seconds
+          setInterval(changeBackground, 7000);
         } catch (error) {
-          console.error("Error in slideshow:", error);
-          handleImageError();
+          console.error("Error in color slideshow:", error);
+          // Fallback to a single color if there's an error
+          heroSection.style.backgroundColor = "#777";
         }
       });
     </script>
