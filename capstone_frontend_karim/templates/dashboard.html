@@ -47,7 +47,7 @@
                 id="search-query"
                 placeholder="Search for items..."
               />
-              <button id="search-button">
+              <button id="search-button" class="btn btn-primary">
                 <i class="fas fa-search"></i> Search
               </button>
             </div>
@@ -58,8 +58,8 @@
             </button>
           </div>
 
-          <!-- Filters area (hidden by default) -->
-          <div id="search-filters" class="search-filters" style="display: none">
+          <!-- Filters area (visible in this version for testing) -->
+          <div id="search-filters" class="search-filters">
             <div class="filter-row">
               <div class="filter-group">
                 <label for="filter-collection">Collection:</label>
@@ -99,11 +99,40 @@
             </div>
 
             <div class="filter-actions">
-              <button id="apply-filters" class="btn">Apply Filters</button>
+              <button id="apply-filters" class="btn btn-primary">
+                Apply Filters
+              </button>
               <button id="clear-filters" class="btn btn-secondary">
                 Clear
               </button>
+              <button id="load-sample-items" class="btn btn-info">
+                Load Sample Items
+              </button>
             </div>
+
+            <script>
+              // Add this event listener after other scripts are loaded
+              document.addEventListener("DOMContentLoaded", function () {
+                // Add event listener for the sample items button
+                const sampleButton =
+                  document.getElementById("load-sample-items");
+                if (sampleButton) {
+                  sampleButton.addEventListener("click", function () {
+                    fetch("/api/collection/sample_items")
+                      .then((response) => response.json())
+                      .then((data) => {
+                        console.log("Loaded sample items:", data);
+                        displaySearchResults(data);
+                      })
+                      .catch((error) => {
+                        console.error("Error loading sample items:", error);
+                        document.getElementById("search-results").innerHTML =
+                          '<p class="error">Failed to load sample items. Please try again.</p>';
+                      });
+                  });
+                }
+              });
+            </script>
           </div>
 
           <!-- Search results area -->
@@ -695,9 +724,14 @@
 
           console.log("Search params:", Object.fromEntries(params.entries()));
 
+          // Make sure we have at least one parameter or search by user only
+          if (params.toString() === "") {
+            console.log("No search parameters, performing general search");
+          }
+
           // Log details for debugging
           const url = `/api/collection/search?${params.toString()}`;
-          console.log("Search URL:", url);
+          console.log("Sending search request to URL:", url);
 
           const response = await fetch(url);
           if (!response.ok) {
@@ -706,6 +740,14 @@
 
           const data = await response.json();
           console.log("Search results:", data);
+
+          // Special handling for empty results
+          if (!data || !data.collection || data.collection.length === 0) {
+            resultsArea.innerHTML =
+              '<p class="no-results">No items found matching your criteria</p>';
+            return;
+          }
+
           displaySearchResults(data);
         } catch (error) {
           console.error("Error searching items:", error);
@@ -727,7 +769,7 @@
 
         // Sort items by value (high to low)
         const sortedItems = [...data.collection].sort(
-          (a, b) => b.value - a.value
+          (a, b) => (b.value || 0) - (a.value || 0)
         );
 
         let html =
@@ -738,203 +780,38 @@
         html += '<ul class="search-results-list">';
 
         sortedItems.forEach((item) => {
+          // Safely handle potentially missing or null fields
+          const name = item.name || "Unnamed Item";
+          const value = item.value ? Number(item.value) : 0;
+          const collection = item.collection_name || "Uncategorized";
+          const year = item.year || "N/A";
+          const condition = item.condition || "Unknown";
+          const description = item.description || "";
+
           html += `
             <li class="search-result-item">
               <div class="result-main">
-                <div class="result-name">${item.name}</div>
-                <div class="result-value">$${item.value.toLocaleString()}</div>
+                <div class="result-name">${name}</div>
+                <div class="result-value">$${value.toLocaleString()}</div>
               </div>
               <div class="result-details">
-                <span class="result-collection">${item.collection_name}</span>
-                <span class="result-year">Year: ${item.year}</span>
-                <span class="result-condition">Condition: ${
-                  item.condition
-                }</span>
+                <span class="result-collection">${collection}</span>
+                <span class="result-year">Year: ${year}</span>
+                <span class="result-condition">Condition: ${condition}</span>
               </div>
               ${
-                item.description
-                  ? `<div class="result-description">${item.description}</div>`
+                description
+                  ? `<div class="result-description">${description}</div>`
                   : ""
               }
-              <div class="result-actions">
-                <button class="btn btn-sm btn-outline-primary edit-item-btn" data-item-id="${
-                  item.item_id
-                }" data-item-name="${item.name}" data-item-collection="${
-            item.collection_name
-          }" data-item-year="${item.year}" data-item-condition="${
-            item.condition
-          }" data-item-value="${item.value}" data-item-description="${
-            item.description || ""
-          }">
-                  <i class="fas fa-edit"></i> Edit
-                </button>
-                <button class="btn btn-sm btn-outline-danger delete-item-btn" data-item-id="${
-                  item.item_id
-                }" data-item-name="${item.name}" data-item-collection="${
-            item.collection_name
-          }">
-                  <i class="fas fa-trash"></i> Delete
-                </button>
-              </div>
             </li>
           `;
         });
 
         html += "</ul>";
-
         resultsArea.innerHTML = html;
 
-        // Add event listeners to the edit and delete buttons
-        document.querySelectorAll(".edit-item-btn").forEach((button) => {
-          button.addEventListener("click", function () {
-            const itemId = this.getAttribute("data-item-id");
-            const itemName = this.getAttribute("data-item-name");
-            const collectionName = this.getAttribute("data-item-collection");
-            const itemYear = this.getAttribute("data-item-year");
-            const itemCondition = this.getAttribute("data-item-condition");
-            const itemValue = this.getAttribute("data-item-value");
-            const itemDescription = this.getAttribute("data-item-description");
-
-            // Open edit modal and populate with item data
-            const editItemModal = document.getElementById("editItemModal");
-            if (editItemModal) {
-              // Populate form fields
-              const form = editItemModal.querySelector("form");
-              if (form) {
-                form.querySelector("#edit-item-id").value = itemId;
-                form.querySelector("#edit-item-name").value = itemName;
-
-                // Populate collections dropdown
-                const collectionsDropdown =
-                  form.querySelector("#edit-collection");
-                // Clear existing options
-                collectionsDropdown.innerHTML = "";
-
-                // Fetch all collections and populate the dropdown
-                fetch("/api/collections")
-                  .then((response) => response.json())
-                  .then((data) => {
-                    if (
-                      data &&
-                      data.collections &&
-                      Array.isArray(data.collections)
-                    ) {
-                      data.collections.forEach((collection) => {
-                        const option = document.createElement("option");
-                        option.value =
-                          collection.name || collection.collection_name;
-                        option.textContent =
-                          collection.name || collection.collection_name;
-                        if (
-                          collection.name === collectionName ||
-                          collection.collection_name === collectionName
-                        ) {
-                          option.selected = true;
-                        }
-                        collectionsDropdown.appendChild(option);
-                      });
-                    }
-                  })
-                  .catch((error) => {
-                    console.error("Error fetching collections:", error);
-                    // Add the current collection as fallback
-                    const option = document.createElement("option");
-                    option.value = collectionName;
-                    option.textContent = collectionName;
-                    option.selected = true;
-                    collectionsDropdown.appendChild(option);
-                  });
-
-                form.querySelector("#edit-item-year").value = itemYear;
-                form.querySelector("#edit-item-condition").value =
-                  itemCondition;
-                form.querySelector("#edit-item-value").value = itemValue;
-                form.querySelector("#edit-item-description").value =
-                  itemDescription;
-              }
-
-              // Add close button functionality
-              const closeBtn = editItemModal.querySelector(".close-btn");
-              if (closeBtn) {
-                closeBtn.addEventListener("click", function () {
-                  editItemModal.style.display = "none";
-                });
-              }
-
-              // Show the modal using vanilla JS
-              editItemModal.style.display = "block";
-            } else {
-              console.error("Edit item modal not found");
-            }
-          });
-        });
-
-        document.querySelectorAll(".delete-item-btn").forEach((button) => {
-          button.addEventListener("click", function () {
-            const itemId = this.getAttribute("data-item-id");
-            const itemName = this.getAttribute("data-item-name");
-            const collectionName = this.getAttribute("data-item-collection");
-
-            // Show the delete modal instead of confirm
-            const deleteItemModal =
-              document.getElementById("delete-item-modal");
-            if (deleteItemModal) {
-              // Populate the modal
-              document.getElementById("delete-item-name").textContent =
-                itemName;
-              document.getElementById("delete-item-collection").textContent =
-                collectionName;
-
-              // Clear any previous status
-              document.getElementById("delete-item-status").textContent = "";
-
-              // Set up event handlers for the modal buttons
-              const confirmButton = document.getElementById(
-                "confirm-delete-item"
-              );
-              const cancelButton =
-                document.getElementById("cancel-delete-item");
-              const closeBtn = deleteItemModal.querySelector(".close-btn");
-
-              // Remove any existing event listeners
-              const newConfirmButton = confirmButton.cloneNode(true);
-              confirmButton.parentNode.replaceChild(
-                newConfirmButton,
-                confirmButton
-              );
-              const newCancelButton = cancelButton.cloneNode(true);
-              cancelButton.parentNode.replaceChild(
-                newCancelButton,
-                cancelButton
-              );
-
-              // Function to hide the modal
-              const hideModal = function () {
-                deleteItemModal.style.display = "none";
-              };
-
-              // Add new event listeners
-              newConfirmButton.addEventListener("click", function () {
-                deleteItem(itemId, collectionName);
-
-                // Hide the modal after a delay
-                setTimeout(hideModal, 2000);
-              });
-
-              newCancelButton.addEventListener("click", hideModal);
-
-              // Also handle the close button
-              if (closeBtn) {
-                closeBtn.addEventListener("click", hideModal);
-              }
-
-              // Show the modal using vanilla JS
-              deleteItemModal.style.display = "block";
-            } else {
-              console.error("Delete item modal not found");
-            }
-          });
-        });
+        console.log(`Displayed ${sortedItems.length} search results`);
       }
     }
 
@@ -2754,6 +2631,31 @@
       // Load collections
       loadCollections();
     });
+
+    // Initialize everything
+    initDashboard();
+
+    // Add sample items loader
+    const sampleButton = document.getElementById("load-sample-items");
+    if (sampleButton) {
+      sampleButton.addEventListener("click", function () {
+        const resultsArea = document.getElementById("search-results");
+        resultsArea.innerHTML =
+          '<p class="loading">Loading sample items...</p>';
+
+        fetch("/api/collection/sample_items")
+          .then((response) => response.json())
+          .then((data) => {
+            console.log("Loaded sample items:", data);
+            displaySearchResults(data);
+          })
+          .catch((error) => {
+            console.error("Error loading sample items:", error);
+            resultsArea.innerHTML =
+              '<p class="error">Failed to load sample items. Please try again.</p>';
+          });
+      });
+    }
   });
 </script>
 
