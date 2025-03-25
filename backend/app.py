@@ -48,7 +48,8 @@ def create_app():
         # Initialize Flask application with custom template and static directories
         app = Flask(__name__, 
                     template_folder=template_dir,
-                    static_folder=static_dir)
+                    static_folder=static_dir,
+                    static_url_path='/static')
         logging.info("Flask app initialized")
         app.secret_key = os.getenv("SECRET_KEY", "supersecretkey")  # Use environment variable for secret key
 
@@ -80,6 +81,21 @@ def create_app():
             # Print debug info about the request
             print(f"[DEBUG] Request from: {request.user_agent}")
             print(f"[DEBUG] Current session: {dict(session)}")
+            print(f"[DEBUG] Request path: {request.path}")
+        
+        # Debug route to check static files
+        @app.route('/debug-static')
+        def debug_static():
+            from flask import jsonify
+            import glob
+            
+            static_files = glob.glob(os.path.join(static_dir, '**'), recursive=True)
+            return jsonify({
+                'static_dir': static_dir,
+                'static_url_path': app.static_url_path,
+                'files': [os.path.relpath(f, static_dir) for f in static_files if os.path.isfile(f)],
+                'exists': os.path.exists(static_dir)
+            })
         
         # Register API blueprints for authentication and collection management
         app.register_blueprint(auth_blueprint, url_prefix="/api/auth")

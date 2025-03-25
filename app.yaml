@@ -5,3 +5,12 @@ env_variables:
   FLASK_ENV: "production"
   SECRET_KEY: "supersecretkey"
   SESSION_TYPE: "filesystem"
+
+handlers:
+  # Static files handler - explicitly define static file handling
+  - url: /static
+    static_dir: capstone_frontend_karim/static
+
+  # All remaining URLs are handled by the app
+  - url: /.*
+    script: auto
