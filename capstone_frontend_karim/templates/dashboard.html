@@ -1870,12 +1870,11 @@
           // Get values from the form
           const selectedOption =
             collectionSelector.options[collectionSelector.selectedIndex];
-          const oldCollectionName = selectedOption.value;
           const collectionId = selectedOption.dataset.collectionId;
-          const newCollectionName = newNameInput.value;
+          const newCollectionName = newNameInput.value.trim();
 
           // Validate input
-          if (!oldCollectionName) {
+          if (!selectedOption || !collectionId) {
             if (statusElement)
               statusElement.innerHTML =
                 '<p class="error">Please select a collection to edit</p>';
