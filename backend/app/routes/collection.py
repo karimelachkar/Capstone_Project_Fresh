@@ -15,6 +15,36 @@ from datetime import datetime
 # Initialize Blueprint for collection routes
 collection_blueprint = Blueprint("collection", __name__)
 
+def ensure_tables_exist():
+    """
+    Ensures all required BigQuery tables exist.
+    Returns True if all tables exist or were successfully created, False otherwise.
+    """
+    try:
+        client = get_bigquery_client()
+        client._location = "europe-southwest1"
+        
+        # Check if tables exist
+        tables_to_check = [BQ_COLLECTION_ITEMS_TABLE, BQ_COLLECTIONS_TABLE]
+        
+        for table_id in tables_to_check:
+            dataset_id = table_id.split('.')[0]
+            table_name = table_id.split('.')[-1]
+            
+            try:
+                # Check if the table exists
+                client.get_table(f"{dataset_id}.{table_name}")
+                print(f"[INFO] Table {table_id} exists")
+            except Exception as e:
+                print(f"[WARNING] Table {table_id} does not exist: {str(e)}")
+                # For this app, we won't auto-create tables - just return False
+                return False
+        
+        return True
+    except Exception as e:
+        print(f"[ERROR] Failed to ensure tables exist: {str(e)}")
+        return False
+
 def login_required(f):
     """
     Decorator to ensure user is authenticated before accessing protected routes.
@@ -297,18 +327,17 @@ def assign_collections():
 @login_required
 def add_item():
     """
-    API endpoint to add a new item to the collection.
+    API endpoint to add a new item to a collection.
     
     Expected JSON payload:
     {
         "name": str,
         "description": str,
         "collection_name": str,
-        "image_url": str (optional),
-        "tags": list (optional),
-        "value": float (optional),
-        "year": int (optional),
-        "condition": str (optional)
+        "tags": list,
+        "value": float,
+        "year": int,
+        "condition": str
     }
     """
     user_id = session.get('user_id')
@@ -317,72 +346,66 @@ def add_item():
     # Validate required fields
     if not data.get("name"):
         return jsonify({"error": "Name is required"}), 400
-        
-    # Generate unique item_id
-    item_id = str(uuid.uuid4())
     
-    # Parse the value as float if provided
+    # Parse value field if present
     value = None
-    if 'value' in data and data['value']:
+    if "value" in data and data["value"]:
         try:
-            value = float(data['value'])
+            value = float(data["value"])
         except ValueError:
             return jsonify({"error": "Value must be a number"}), 400
     
-    # Parse year as int if provided
+    # Parse year field if present
     year = None
-    if 'year' in data and data['year']:
+    if "year" in data and data["year"]:
         try:
-            year = int(data['year'])
+            year = int(data["year"])
         except ValueError:
-            return jsonify({"error": "Year must be a number"}), 400
-    
-    # Get condition if provided, or use default
-    condition = data.get("condition", "Excellent")
+            return jsonify({"error": "Year must be an integer"}), 400
     
     # Prepare item data
+    item_id = str(uuid.uuid4())
     item_data = {
         "item_id": item_id,
         "user_id": user_id,
         "name": data.get("name"),
         "description": data.get("description", ""),
         "collection_name": data.get("collection_name", ""),
-        "image_url": data.get("image_url", ""),
         "tags": data.get("tags", []),
         "value": value,
         "year": year,
-        "condition": condition
+        "condition": data.get("condition", "")
     }
     
     # Insert item into BigQuery
     client = get_bigquery_client()
     client._location = "europe-southwest1"
     
+    # Prepare query parameters
+    query_params = [
+        bigquery.ScalarQueryParameter("item_id", "STRING", item_id),
+        bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
+        bigquery.ScalarQueryParameter("name", "STRING", item_data["name"]),
+        bigquery.ScalarQueryParameter("description", "STRING", item_data["description"]),
+        bigquery.ScalarQueryParameter("collection_name", "STRING", item_data["collection_name"]),
+        bigquery.ArrayQueryParameter("tags", "STRING", item_data["tags"]),
+        bigquery.ScalarQueryParameter("value", "FLOAT", item_data["value"]),
+        bigquery.ScalarQueryParameter("year", "INT64", item_data["year"]),
+        bigquery.ScalarQueryParameter("condition", "STRING", item_data["condition"])
+    ]
+    
     query = f"""
         INSERT INTO `{BQ_COLLECTION_ITEMS_TABLE}` 
-        (item_id, user_id, name, description, collection_name, image_url, tags, value, year, condition)
+        (item_id, user_id, name, description, collection_name, tags, value, year, condition)
         VALUES 
-        (@item_id, @user_id, @name, @description, @collection_name, @image_url, @tags, @value, @year, @condition)
+        (@item_id, @user_id, @name, @description, @collection_name, @tags, @value, @year, @condition)
     """
     
-    job_config = bigquery.QueryJobConfig(
-        query_parameters=[
-            bigquery.ScalarQueryParameter("item_id", "STRING", item_data["item_id"]),
-            bigquery.ScalarQueryParameter("user_id", "STRING", item_data["user_id"]),
-            bigquery.ScalarQueryParameter("name", "STRING", item_data["name"]),
-            bigquery.ScalarQueryParameter("description", "STRING", item_data["description"]),
-            bigquery.ScalarQueryParameter("collection_name", "STRING", item_data["collection_name"]),
-            bigquery.ScalarQueryParameter("image_url", "STRING", item_data["image_url"]),
-            bigquery.ArrayQueryParameter("tags", "STRING", item_data["tags"]),
-            bigquery.ScalarQueryParameter("value", "FLOAT", item_data["value"]),
-            bigquery.ScalarQueryParameter("year", "INT64", item_data["year"]),
-            bigquery.ScalarQueryParameter("condition", "STRING", item_data["condition"])
-        ]
-    )
+    job_config = bigquery.QueryJobConfig(query_parameters=query_params)
     
     try:
         client.query(query, job_config=job_config).result()
-        return jsonify({"message": "Item added successfully", "item": item_data}), 201
+        return jsonify({"message": "Item added successfully", "item_id": item_id}), 201
     except Exception as e:
         print(f"[ERROR] Failed to add item: {str(e)}")
         return jsonify({"error": "Failed to add item", "details": str(e)}), 500
@@ -398,8 +421,10 @@ def update_item(item_id):
         "name": str (optional),
         "description": str (optional),
         "collection_name": str (optional),
-        "image_url": str (optional),
-        "tags": list (optional)
+        "tags": list (optional),
+        "value": float (optional),
+        "year": int (optional),
+        "condition": str (optional)
     }
     """
     user_id = session.get('user_id')
@@ -413,8 +438,7 @@ def update_item(item_id):
     update_fields = []
     query_params = [
         bigquery.ScalarQueryParameter("item_id", "STRING", item_id),
-        bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
-        bigquery.ScalarQueryParameter("updated_at", "STRING", datetime.utcnow().isoformat())
+        bigquery.ScalarQueryParameter("user_id", "STRING", user_id)
     ]
     
     if "name" in data:
@@ -429,13 +453,21 @@ def update_item(item_id):
         update_fields.append("collection_name = @collection_name")
         query_params.append(bigquery.ScalarQueryParameter("collection_name", "STRING", data["collection_name"]))
     
-    if "image_url" in data:
-        update_fields.append("image_url = @image_url")
-        query_params.append(bigquery.ScalarQueryParameter("image_url", "STRING", data["image_url"]))
-    
     if "tags" in data:
         update_fields.append("tags = @tags")
         query_params.append(bigquery.ArrayQueryParameter("tags", "STRING", data["tags"]))
+        
+    if "value" in data:
+        update_fields.append("value = @value")
+        query_params.append(bigquery.ScalarQueryParameter("value", "FLOAT", float(data["value"]) if data["value"] else None))
+        
+    if "year" in data:
+        update_fields.append("year = @year")
+        query_params.append(bigquery.ScalarQueryParameter("year", "INT64", int(data["year"]) if data["year"] else None))
+        
+    if "condition" in data:
+        update_fields.append("condition = @condition")
+        query_params.append(bigquery.ScalarQueryParameter("condition", "STRING", data["condition"]))
     
     if not update_fields:
         return jsonify({"error": "No valid fields to update"}), 400
@@ -446,7 +478,7 @@ def update_item(item_id):
     
     query = f"""
         UPDATE `{BQ_COLLECTION_ITEMS_TABLE}`
-        SET {', '.join(update_fields)}, updated_at = @updated_at
+        SET {', '.join(update_fields)}
         WHERE item_id = @item_id AND user_id = @user_id
     """
     
@@ -1050,7 +1082,7 @@ def edit_collection(collection_id):
     # Construct and execute update query
     query = f"""
         UPDATE `{BQ_COLLECTIONS_TABLE}`
-        SET {', '.join(update_fields)}, updated_at = @updated_at
+        SET {', '.join(update_fields)}
         WHERE collection_id = @collection_id AND user_id = @user_id
     """
     
@@ -1062,62 +1094,3 @@ def edit_collection(collection_id):
     except Exception as e:
         print(f"[ERROR] Failed to update collection: {str(e)}")
         return jsonify({"error": "Failed to update collection", "details": str(e)}), 500
-
-def ensure_tables_exist():
-    """
-    Utility function to check if required BigQuery tables exist and create them if not.
-    """
-    client = get_bigquery_client()
-    dataset_id = BQ_DATASET.split('.')[0]
-    
-    try:
-        # Check if dataset exists, create if not
-        try:
-            client.get_dataset(dataset_id)
-            print(f"[INFO] Dataset {dataset_id} exists")
-        except Exception:
-            print(f"[INFO] Creating dataset {dataset_id}")
-            dataset = bigquery.Dataset(f"{client.project}.{dataset_id}")
-            dataset.location = "europe-southwest1"
-            client.create_dataset(dataset, exists_ok=True)
-        
-        # Check if collections table exists, create if not
-        collections_table_id = BQ_COLLECTIONS_TABLE.split('.')[-1]
-        try:
-            client.get_table(f"{client.project}.{dataset_id}.{collections_table_id}")
-            print(f"[INFO] Table {collections_table_id} exists")
-        except Exception:
-            print(f"[INFO] Creating table {collections_table_id}")
-            collections_schema = [
-                bigquery.SchemaField("collection_id", "STRING", mode="REQUIRED"),
-                bigquery.SchemaField("user_id", "STRING", mode="REQUIRED"),
-                bigquery.SchemaField("collection_name", "STRING", mode="REQUIRED")
-            ]
-            table = bigquery.Table(f"{client.project}.{dataset_id}.{collections_table_id}", schema=collections_schema)
-            client.create_table(table, exists_ok=True)
-        
-        # Check if collection items table exists, create if not
-        items_table_id = BQ_COLLECTION_ITEMS_TABLE.split('.')[-1]
-        try:
-            client.get_table(f"{client.project}.{dataset_id}.{items_table_id}")
-            print(f"[INFO] Table {items_table_id} exists")
-        except Exception:
-            print(f"[INFO] Creating table {items_table_id}")
-            items_schema = [
-                bigquery.SchemaField("item_id", "STRING", mode="NULLABLE"),
-                bigquery.SchemaField("user_id", "STRING", mode="NULLABLE"),
-                bigquery.SchemaField("name", "STRING", mode="NULLABLE"),
-                bigquery.SchemaField("description", "STRING", mode="NULLABLE"),
-                bigquery.SchemaField("collection_name", "STRING", mode="NULLABLE"),
-                bigquery.SchemaField("value", "FLOAT", mode="NULLABLE"),
-                bigquery.SchemaField("year", "INTEGER", mode="NULLABLE"),
-                bigquery.SchemaField("condition", "STRING", mode="NULLABLE"),
-                bigquery.SchemaField("tags", "STRING", mode="REPEATED")
-            ]
-            table = bigquery.Table(f"{client.project}.{dataset_id}.{items_table_id}", schema=items_schema)
-            client.create_table(table, exists_ok=True)
-            
-        return True
-    except Exception as e:
-        print(f"[ERROR] Error ensuring tables exist: {str(e)}")
-        return False
