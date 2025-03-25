@@ -1464,11 +1464,21 @@
                 label: function (context) {
                   const label = context.dataset.label || "";
                   const value = context.raw;
+
                   if (selectedMetric === "value_data") {
+                    // Format value as currency with commas
                     return `${label}: $${value.toLocaleString()}`;
                   } else {
-                    return `${label}: ${value} items`;
+                    // For item counts, ensure they're realistic by displaying as integers
+                    const intValue = Math.round(value);
+                    return `${label}: ${intValue} item${
+                      intValue !== 1 ? "s" : ""
+                    }`;
                   }
+                },
+                // Add title callback to clarify this is current data
+                title: function (tooltipItems) {
+                  return `Current values (as of ${new Date().toLocaleDateString()})`;
                 },
               },
             },

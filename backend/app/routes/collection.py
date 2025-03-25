@@ -820,7 +820,7 @@ def get_collection_analytics():
         try:
             # Build the valuable items query
             valuable_items_query = f"""
-                SELECT name, collection_name, IFNULL(value, 0) as value
+                SELECT name, collection_name, value, item_id
                 FROM `{BQ_COLLECTION_ITEMS_TABLE}`
                 WHERE user_id = @user_id
                 AND value IS NOT NULL
@@ -846,32 +846,21 @@ def get_collection_analytics():
             # Configure the job with our parameters
             valuable_items_job_config = bigquery.QueryJobConfig(query_parameters=query_params)
             
-            # Execute the query
+            # Execute query to get real valuable items
             valuable_items_result = client.query(valuable_items_query, job_config=valuable_items_job_config).result()
-            real_valuable_items = [dict(row) for row in valuable_items_result]
+            valuable_items = [dict(row) for row in valuable_items_result]
             
-            # If we have real data, use it
-            if real_valuable_items:
-                valuable_items = real_valuable_items
-            else:
-                # Otherwise use placeholder data
-                valuable_items = [
-                    {
-                        "name": f"Sample Item {i}",
-                        "collection_name": items_filter if items_filter else "Sample Collection",
-                        "value": (10 - i) * 100  # Descending values
-                    } for i in range(1, 6)
-                ]
+            # Don't fall back to sample data - if we don't have items, return an empty array
+            if not valuable_items:
+                print("[DEBUG] No valuable items found in database")
+                valuable_items = []
+            
         except Exception as e:
-            print(f"[WARNING] Failed to get valuable items: {str(e)}")
-            # Fallback to placeholder data
-            valuable_items = [
-                {
-                    "name": f"Sample Item {i}",
-                    "collection_name": "Sample Collection",
-                    "value": (10 - i) * 100  # Descending values
-                } for i in range(1, 6)
-            ]
+            print(f"[ERROR] Failed to get valuable items: {str(e)}")
+            import traceback
+            print(f"[ERROR] Traceback: {traceback.format_exc()}")
+            # Return an empty array instead of sample data
+            valuable_items = []
         
         # Calculate total value
         try:
