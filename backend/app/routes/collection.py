@@ -818,12 +818,10 @@ def get_collection_analytics():
         
         # Try to get real valuable items if possible
         try:
-            # Build the valuable items query
             valuable_items_query = f"""
-                SELECT name, collection_name, value, item_id
+                SELECT name, collection_name, IFNULL(value, 0) as value, item_id
                 FROM `{BQ_COLLECTION_ITEMS_TABLE}`
                 WHERE user_id = @user_id
-                AND value IS NOT NULL
             """
             
             query_params = [
@@ -833,26 +831,41 @@ def get_collection_analytics():
             # Check if we need to filter by collection
             items_filter = request.args.get('items_filter')
             if items_filter:
-                print(f"[DEBUG] Filtering valuable items by collection: {items_filter}")
-                valuable_items_query += " AND collection_id = @collection_filter"
+                print(f"[DEBUG] Filtering valuable items by collection: '{items_filter}'")
+                # Use case-insensitive matching for collection name
+                valuable_items_query += """ 
+                    AND (
+                        collection_id = @collection_filter
+                        OR LOWER(collection_name) = LOWER(@collection_filter)
+                        OR collection_name LIKE CONCAT('%', @collection_filter, '%')
+                    )
+                """
                 query_params.append(bigquery.ScalarQueryParameter("collection_filter", "STRING", items_filter))
             
-            # Complete the query
+            # Complete the query - order by value in descending order
             valuable_items_query += """
-                ORDER BY value DESC
+                ORDER BY IFNULL(value, 0) DESC
                 LIMIT 5
             """
             
-            # Configure the job with our parameters
             valuable_items_job_config = bigquery.QueryJobConfig(query_parameters=query_params)
+            
+            # Log the full query for debugging
+            print(f"[DEBUG] Valuable items query: {valuable_items_query}")
+            print(f"[DEBUG] Query parameters: {query_params}")
             
             # Execute query to get real valuable items
             valuable_items_result = client.query(valuable_items_query, job_config=valuable_items_job_config).result()
             valuable_items = [dict(row) for row in valuable_items_result]
             
+            # Log the results
+            print(f"[DEBUG] Found {len(valuable_items)} valuable items")
+            for item in valuable_items:
+                print(f"[DEBUG] Item: {item['name']}, Collection: {item['collection_name']}, Value: {item['value']}")
+            
             # Don't fall back to sample data - if we don't have items, return an empty array
             if not valuable_items:
-                print("[DEBUG] No valuable items found in database")
+                print(f"[DEBUG] No valuable items found for filter: '{items_filter}'")
                 valuable_items = []
             
         except Exception as e:

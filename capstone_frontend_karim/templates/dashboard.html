@@ -583,6 +583,13 @@
       const itemsFilter = document.getElementById("items-filter");
       if (itemsFilter) {
         itemsFilter.addEventListener("change", function () {
+          console.log("Items filter changed to:", this.value);
+          console.log(
+            "Selected option text:",
+            this.options[this.selectedIndex].text
+          );
+
+          // Refresh the valuable items section with the selected filter
           fetchAnalytics("top-items", false, null, this.value);
         });
       }
