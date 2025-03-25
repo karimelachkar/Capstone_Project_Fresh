@@ -1069,17 +1069,22 @@ def edit_collection(collection_id):
     
     Expected JSON payload:
     {
-        "collection_name": str
+        "new_name": str
     }
     """
     user_id = session.get('user_id')
     data = request.get_json()
     
-    if not data.get("collection_name"):
+    # Get new name from request - accept either new_name or collection_name for flexibility
+    new_name = data.get("new_name")
+    
+    if not new_name:
         return jsonify({"error": "Collection name is required"}), 400
     
     client = get_bigquery_client()
     client._location = "europe-southwest1"
+    
+    print(f"[DEBUG] Edit Collection - ID: {collection_id}, User ID: {user_id}, New Name: {new_name}")
     
     # Construct and execute update query
     query = f"""
@@ -1092,12 +1097,31 @@ def edit_collection(collection_id):
         query_parameters=[
             bigquery.ScalarQueryParameter("collection_id", "STRING", collection_id),
             bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
-            bigquery.ScalarQueryParameter("collection_name", "STRING", data.get("collection_name"))
+            bigquery.ScalarQueryParameter("collection_name", "STRING", new_name)
         ]
     )
     
     try:
         client.query(query, job_config=job_config).result()
+        
+        # Also update collection_name in collection items table for consistency
+        update_items_query = f"""
+            UPDATE `{BQ_COLLECTION_ITEMS_TABLE}`
+            SET collection_name = @collection_name
+            WHERE user_id = @user_id 
+            AND (collection_id = @collection_id)
+        """
+        
+        update_items_job_config = bigquery.QueryJobConfig(
+            query_parameters=[
+                bigquery.ScalarQueryParameter("collection_id", "STRING", collection_id),
+                bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
+                bigquery.ScalarQueryParameter("collection_name", "STRING", new_name)
+            ]
+        )
+        
+        client.query(update_items_query, job_config=update_items_job_config).result()
+        
         return jsonify({"message": "Collection updated successfully"}), 200
     except Exception as e:
         print(f"[ERROR] Failed to update collection: {str(e)}")

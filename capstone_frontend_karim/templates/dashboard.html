@@ -239,28 +239,27 @@
   <!-- Edit Collection Modal -->
   <div id="edit-collection-modal" class="modal">
     <div class="modal-content">
-      <span class="close-btn">&times;</span>
-      <h3>Edit Collection</h3>
-      <div class="collection-selector">
-        <label for="collection-to-edit">Select Collection:</label>
-        <select id="collection-to-edit">
-          <!-- Will be populated dynamically -->
-        </select>
-      </div>
+      <span class="close">&times;</span>
+      <h2>Edit Collection</h2>
       <form id="edit-collection-form">
-        <input type="hidden" id="edit-collection-id" name="collection_id" />
+        <div class="form-group">
+          <label for="collection-to-edit">Select Collection:</label>
+          <select id="collection-to-edit" required>
+            <option value="">Select a Collection</option>
+          </select>
+        </div>
         <div class="form-group">
           <label for="new-collection-name">New Collection Name:</label>
           <input
             type="text"
             id="new-collection-name"
-            name="new_name"
+            placeholder="Enter new collection name"
             required
           />
         </div>
-        <button type="submit" class="btn">Save Changes</button>
+        <div id="edit-collection-form-status" class="form-status"></div>
+        <button type="submit">Save Changes</button>
       </form>
-      <div id="edit-collection-form-status"></div>
     </div>
   </div>
 
@@ -3746,6 +3745,25 @@
     background-color: #f8d7da;
     color: #842029;
     border: 1px solid #f5c2c7;
+  }
+
+  .form-status {
+    margin: 10px 0;
+  }
+
+  .form-status .error {
+    color: #e74c3c;
+    font-weight: bold;
+  }
+
+  .form-status .success {
+    color: #2ecc71;
+    font-weight: bold;
+  }
+
+  .form-status .loading {
+    color: #3498db;
+    font-style: italic;
   }
 </style>
 {% endblock %}
