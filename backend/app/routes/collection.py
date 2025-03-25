@@ -1063,60 +1063,6 @@ def edit_collection(collection_id):
         print(f"[ERROR] Failed to update collection: {str(e)}")
         return jsonify({"error": "Failed to update collection", "details": str(e)}), 500
 
-@collection_blueprint.route("/sample_items", methods=["GET"])
-def sample_items():
-    """Temporary endpoint to return sample items for testing"""
-    # Create sample data
-    items = [
-        {
-            "item_id": "sample1",
-            "name": "First Edition Charizard",
-            "description": "Rare Pokémon card in mint condition",
-            "collection_name": "Rare Pokémon Cards Collection",
-            "value": 5000.0,
-            "year": 1999,
-            "condition": "Mint"
-        },
-        {
-            "item_id": "sample2",
-            "name": "Pikachu Illustrator",
-            "description": "One of the rarest promotional cards",
-            "collection_name": "Rare Pokémon Cards Collection",
-            "value": 250000.0,
-            "year": 1998,
-            "condition": "Excellent"
-        },
-        {
-            "item_id": "sample3",
-            "name": "Blastoise Holo",
-            "description": "Original Base Set",
-            "collection_name": "Rare Pokémon Cards Collection",
-            "value": 1200.0,
-            "year": 1999,
-            "condition": "Near Mint"
-        },
-        {
-            "item_id": "sample4",
-            "name": "Ancient Mew",
-            "description": "Movie promotional card",
-            "collection_name": "Pokémon Movie Promos",
-            "value": 200.0,
-            "year": 2000,
-            "condition": "Good"
-        },
-        {
-            "item_id": "sample5",
-            "name": "Mewtwo GX Rainbow Rare",
-            "description": "Modern collectible",
-            "collection_name": "Modern Pokémon Cards",
-            "value": 80.0,
-            "year": 2019,
-            "condition": "Mint"
-        }
-    ]
-    
-    return jsonify({"collection": items}), 200
-
 def ensure_tables_exist():
     """
     Utility function to check if required BigQuery tables exist and create them if not.

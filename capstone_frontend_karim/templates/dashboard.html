@@ -105,34 +105,7 @@
               <button id="clear-filters" class="btn btn-secondary">
                 Clear
               </button>
-              <button id="load-sample-items" class="btn btn-info">
-                Load Sample Items
-              </button>
             </div>
-
-            <script>
-              // Add this event listener after other scripts are loaded
-              document.addEventListener("DOMContentLoaded", function () {
-                // Add event listener for the sample items button
-                const sampleButton =
-                  document.getElementById("load-sample-items");
-                if (sampleButton) {
-                  sampleButton.addEventListener("click", function () {
-                    fetch("/api/collection/sample_items")
-                      .then((response) => response.json())
-                      .then((data) => {
-                        console.log("Loaded sample items:", data);
-                        displaySearchResults(data);
-                      })
-                      .catch((error) => {
-                        console.error("Error loading sample items:", error);
-                        document.getElementById("search-results").innerHTML =
-                          '<p class="error">Failed to load sample items. Please try again.</p>';
-                      });
-                  });
-                }
-              });
-            </script>
           </div>
 
           <!-- Search results area -->
@@ -2649,28 +2622,6 @@
       // Initialize the dashboard
       initDashboard();
     });
-
-    // Add sample items loader
-    const sampleButton = document.getElementById("load-sample-items");
-    if (sampleButton) {
-      sampleButton.addEventListener("click", function () {
-        const resultsArea = document.getElementById("search-results");
-        resultsArea.innerHTML =
-          '<p class="loading">Loading sample items...</p>';
-
-        fetch("/api/collection/sample_items")
-          .then((response) => response.json())
-          .then((data) => {
-            console.log("Loaded sample items:", data);
-            displaySearchResults(data);
-          })
-          .catch((error) => {
-            console.error("Error loading sample items:", error);
-            resultsArea.innerHTML =
-              '<p class="error">Failed to load sample items. Please try again.</p>';
-          });
-      });
-    }
   });
 </script>
 
