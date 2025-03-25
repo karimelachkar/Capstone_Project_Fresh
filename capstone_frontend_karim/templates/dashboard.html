@@ -487,8 +487,8 @@
               const newNameInput = document.getElementById(
                 "new-collection-name"
               );
-              if (collectionDropdown.selectedIndex >= 0 && newNameInput) {
-                // Use the selected option's text (collection name) instead of value (collection_id)
+              if (collectionDropdown.selectedIndex > 0 && newNameInput) {
+                // Use the selected option's text (collection name)
                 newNameInput.value =
                   collectionDropdown.options[
                     collectionDropdown.selectedIndex
@@ -500,8 +500,8 @@
                 const newNameInput = document.getElementById(
                   "new-collection-name"
                 );
-                if (newNameInput) {
-                  // Use the selected option's text (collection name) instead of value (collection_id)
+                if (newNameInput && this.selectedIndex > 0) {
+                  // Use the selected option's text (collection name)
                   newNameInput.value = this.options[this.selectedIndex].text;
                 }
               });
@@ -1730,16 +1730,25 @@
         const data = await response.json();
 
         if (response.ok && data.collections) {
-          // Clear loading option and add "All Collections" option
-          dropdown.innerHTML = '<option value="">All Collections</option>';
+          // For edit and delete collection dropdowns, don't add the "All Collections" option
+          if (
+            dropdownId === "collection-to-edit" ||
+            dropdownId === "collection-to-delete"
+          ) {
+            dropdown.innerHTML =
+              '<option value="">Select a Collection</option>';
+          } else {
+            // For other dropdowns (filters), add the "All Collections" option
+            dropdown.innerHTML = '<option value="">All Collections</option>';
+          }
 
           // Add collections to dropdown
           data.collections.forEach((collection) => {
             const option = document.createElement("option");
-            // Use collection_id as the value instead of collection_name
-            option.value =
-              collection.collection_id || collection.collection_name;
+            option.value = collection.collection_name; // Use collection_name as value for edit/delete
             option.textContent = collection.collection_name;
+            // Store collection_id as a data attribute
+            option.dataset.collectionId = collection.collection_id;
             dropdown.appendChild(option);
           });
 
@@ -1859,7 +1868,10 @@
           );
 
           // Get values from the form
-          const oldCollectionName = collectionSelector.value;
+          const selectedOption =
+            collectionSelector.options[collectionSelector.selectedIndex];
+          const oldCollectionName = selectedOption.value;
+          const collectionId = selectedOption.dataset.collectionId;
           const newCollectionName = newNameInput.value;
 
           // Validate input
@@ -1884,7 +1896,7 @@
 
           try {
             const response = await fetch(
-              `/api/collection/edit/${encodeURIComponent(oldCollectionName)}`,
+              `/api/collection/edit/${encodeURIComponent(collectionId)}`,
               {
                 method: "PUT",
                 headers: {
@@ -1902,8 +1914,11 @@
                   '<p class="success">Collection updated successfully!</p>';
               }
 
+              // Show global notification
+              showStatus("Collection updated successfully!", "success");
+
               // Refresh data to show the updated name
-              fetchAnalytics();
+              fetchAnalytics(null, true);
 
               // Clear the form and close the modal after a delay
               setTimeout(() => {
@@ -1917,6 +1932,8 @@
                   data.error || "Failed to update collection"
                 }</p>`;
               }
+              // Show global notification for error
+              showStatus(data.error || "Failed to update collection", "error");
             }
           } catch (error) {
             console.error("Error updating collection:", error);
@@ -1924,6 +1941,11 @@
               statusElement.innerHTML =
                 '<p class="error">An error occurred. Please try again.</p>';
             }
+            // Show global notification for error
+            showStatus(
+              "An error occurred while updating the collection",
+              "error"
+            );
           }
         });
       }
