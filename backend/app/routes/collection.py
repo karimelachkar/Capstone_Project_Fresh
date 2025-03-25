@@ -174,7 +174,7 @@ def get_collections():
     client._location = "europe-southwest1"
     
     query = f"""
-        SELECT collection_name 
+        SELECT collection_id, collection_name 
         FROM `{BQ_COLLECTIONS_TABLE}` 
         WHERE user_id = @user_id 
         ORDER BY collection_name
@@ -191,7 +191,7 @@ def get_collections():
     
     try:
         results = client.query(query, job_config=job_config).result()
-        collections = [{"collection_name": row["collection_name"]} for row in results]
+        collections = [{"collection_id": row["collection_id"], "collection_name": row["collection_name"]} for row in results]
         print(f"[DEBUG] Collections Route - Retrieved {len(collections)} collections")
         
         # If no collections found in collections table, fallback to the collection_items table for backward compatibility
@@ -203,9 +203,7 @@ def get_collections():
                 WHERE user_id = @user_id 
                 AND collection_name IS NOT NULL 
                 AND TRIM(collection_name) != ''
-                AND NOT STARTS_WITH(name, 'Collection: ')  -- Exclude placeholder items
                 GROUP BY collection_name
-                HAVING COUNT(*) > 0  -- Only include collections with at least one actual item
             """
             
             fallback_results = client.query(fallback_query, job_config=job_config).result()
@@ -229,7 +227,8 @@ def assign_collections():
         "assignments": [
             {
                 "item_id": str,
-                "collection_name": str
+                "collection_name": str,
+                "collection_id": str
             },
             ...
         ]
@@ -264,10 +263,11 @@ def assign_collections():
     for assignment in assignments:
         item_id = assignment.get("item_id")
         collection_name = assignment.get("collection_name")
+        collection_id = assignment.get("collection_id")
         
-        if not item_id or not collection_name:
+        if not item_id or (not collection_name and not collection_id):
             error_count += 1
-            errors.append(f"Missing item_id or collection_name for assignment: {assignment}")
+            errors.append(f"Missing required fields for assignment: {assignment}")
             continue
         
         # First, verify the item exists and belongs to the user
@@ -290,24 +290,33 @@ def assign_collections():
                 errors.append(f"Item {item_id} not found or does not belong to user")
                 continue
                 
-            # Update the collection name
+            # Build update fields
+            update_fields = []
+            update_params = [
+                bigquery.ScalarQueryParameter("item_id", "STRING", item_id),
+                bigquery.ScalarQueryParameter("user_id", "STRING", user_id)
+            ]
+            
+            if collection_name:
+                update_fields.append("collection_name = @collection_name")
+                update_params.append(bigquery.ScalarQueryParameter("collection_name", "STRING", collection_name))
+                
+            if collection_id:
+                update_fields.append("collection_id = @collection_id")
+                update_params.append(bigquery.ScalarQueryParameter("collection_id", "STRING", collection_id))
+                
+            # Update the collection info
             update_query = f"""
                 UPDATE `{BQ_COLLECTION_ITEMS_TABLE}`
-                SET collection_name = @collection_name
+                SET {', '.join(update_fields)}
                 WHERE item_id = @item_id AND user_id = @user_id
             """
             
-            update_job_config = bigquery.QueryJobConfig(
-                query_parameters=[
-                    bigquery.ScalarQueryParameter("collection_name", "STRING", collection_name),
-                    bigquery.ScalarQueryParameter("item_id", "STRING", item_id),
-                    bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
-                ]
-            )
+            update_job_config = bigquery.QueryJobConfig(query_parameters=update_params)
             
             client.query(update_query, job_config=update_job_config).result()
             success_count += 1
-            print(f"[DEBUG] Assign Collections Route - Successfully assigned item {item_id} to collection {collection_name}")
+            print(f"[DEBUG] Assign Collections Route - Successfully assigned item {item_id} to collection")
             
         except Exception as e:
             error_count += 1
@@ -334,10 +343,9 @@ def add_item():
         "name": str,
         "description": str,
         "collection_name": str,
-        "tags": list,
-        "value": float,
         "year": int,
-        "condition": str
+        "condition": str,
+        "value": float
     }
     """
     user_id = session.get('user_id')
@@ -365,13 +373,15 @@ def add_item():
     
     # Prepare item data
     item_id = str(uuid.uuid4())
+    collection_id = str(uuid.uuid4())  # Generate collection_id if needed
+    
     item_data = {
         "item_id": item_id,
         "user_id": user_id,
         "name": data.get("name"),
         "description": data.get("description", ""),
         "collection_name": data.get("collection_name", ""),
-        "tags": data.get("tags", []),
+        "collection_id": collection_id,
         "value": value,
         "year": year,
         "condition": data.get("condition", "")
@@ -388,7 +398,7 @@ def add_item():
         bigquery.ScalarQueryParameter("name", "STRING", item_data["name"]),
         bigquery.ScalarQueryParameter("description", "STRING", item_data["description"]),
         bigquery.ScalarQueryParameter("collection_name", "STRING", item_data["collection_name"]),
-        bigquery.ArrayQueryParameter("tags", "STRING", item_data["tags"]),
+        bigquery.ScalarQueryParameter("collection_id", "STRING", item_data["collection_id"]),
         bigquery.ScalarQueryParameter("value", "FLOAT", item_data["value"]),
         bigquery.ScalarQueryParameter("year", "INT64", item_data["year"]),
         bigquery.ScalarQueryParameter("condition", "STRING", item_data["condition"])
@@ -396,9 +406,9 @@ def add_item():
     
     query = f"""
         INSERT INTO `{BQ_COLLECTION_ITEMS_TABLE}` 
-        (item_id, user_id, name, description, collection_name, tags, value, year, condition)
+        (item_id, user_id, name, description, collection_name, collection_id, value, year, condition)
         VALUES 
-        (@item_id, @user_id, @name, @description, @collection_name, @tags, @value, @year, @condition)
+        (@item_id, @user_id, @name, @description, @collection_name, @collection_id, @value, @year, @condition)
     """
     
     job_config = bigquery.QueryJobConfig(query_parameters=query_params)
@@ -421,7 +431,7 @@ def update_item(item_id):
         "name": str (optional),
         "description": str (optional),
         "collection_name": str (optional),
-        "tags": list (optional),
+        "collection_id": str (optional),
         "value": float (optional),
         "year": int (optional),
         "condition": str (optional)
@@ -453,9 +463,9 @@ def update_item(item_id):
         update_fields.append("collection_name = @collection_name")
         query_params.append(bigquery.ScalarQueryParameter("collection_name", "STRING", data["collection_name"]))
     
-    if "tags" in data:
-        update_fields.append("tags = @tags")
-        query_params.append(bigquery.ArrayQueryParameter("tags", "STRING", data["tags"]))
+    if "collection_id" in data:
+        update_fields.append("collection_id = @collection_id")
+        query_params.append(bigquery.ScalarQueryParameter("collection_id", "STRING", data["collection_id"]))
         
     if "value" in data:
         update_fields.append("value = @value")
@@ -556,7 +566,8 @@ def search_items():
                 item_id, 
                 name, 
                 description, 
-                collection_name, 
+                collection_name,
+                collection_id,
                 IFNULL(value, 0) as value,
                 IFNULL(year, 0) as year,
                 IFNULL(condition, 'Unknown') as condition
@@ -636,51 +647,13 @@ def search_items():
         
         print(f"[DEBUG] Search Route - Found {len(items)} items")
         
-        # Add mock data if no items found for testing
-        if len(items) == 0:
-            # Add sample data to help with debugging
-            items = [
-                {
-                    "item_id": "sample1",
-                    "name": "First Edition Charizard",
-                    "description": "Rare Pokémon card in mint condition",
-                    "collection_name": "Rare Pokémon Cards Collection",
-                    "value": 5000.0,
-                    "year": 1999,
-                    "condition": "Mint"
-                },
-                {
-                    "item_id": "sample2",
-                    "name": "Pikachu Illustrator",
-                    "description": "One of the rarest promotional cards",
-                    "collection_name": "Rare Pokémon Cards Collection",
-                    "value": 250000.0,
-                    "year": 1998,
-                    "condition": "Excellent"
-                }
-            ]
-            print("[DEBUG] No real items found, returning sample data for testing")
-        
         return jsonify({"collection": items}), 200
         
     except Exception as e:
         import traceback
         print(f"[ERROR] Search failed: {str(e)}")
         print(f"[ERROR] Traceback: {traceback.format_exc()}")
-        
-        # Return sample data even on error to help with debugging
-        items = [
-            {
-                "item_id": "error1",
-                "name": "Error Sample Item",
-                "description": f"Error occurred: {str(e)}",
-                "collection_name": "Error Collection",
-                "value": 0.0,
-                "year": 2023,
-                "condition": "Poor"
-            }
-        ]
-        return jsonify({"collection": items}), 200
+        return jsonify({"error": "Failed to search items", "details": str(e)}), 500
 
 @collection_blueprint.route("/analytics", methods=["GET"])
 @login_required
@@ -725,28 +698,6 @@ def get_collection_analytics():
         ORDER BY item_count DESC
     """
     
-    # Get tag statistics - try without UNNEST first in case tags is not a repeated field
-    tags_query = f"""
-        SELECT 
-            CASE
-                WHEN ARRAY_LENGTH(tags) > 0 THEN tag
-                ELSE NULL
-            END AS tag,
-            COUNT(*) as usage_count
-        FROM `{BQ_COLLECTION_ITEMS_TABLE}`,
-        UNNEST(
-            CASE
-                WHEN tags IS NULL THEN ["No Tag"]
-                WHEN ARRAY_LENGTH(tags) = 0 THEN ["No Tag"]
-                ELSE tags
-            END
-        ) as tag
-        WHERE user_id = @user_id
-        GROUP BY tag
-        HAVING tag IS NOT NULL
-        ORDER BY usage_count DESC
-    """
-    
     job_config = bigquery.QueryJobConfig(
         query_parameters=[
             bigquery.ScalarQueryParameter("user_id", "STRING", user_id)
@@ -757,24 +708,6 @@ def get_collection_analytics():
         # Execute queries
         items_result = client.query(items_query, job_config=job_config).result()
         collections_result = client.query(collections_query, job_config=job_config).result()
-        
-        try:
-            tags_result = client.query(tags_query, job_config=job_config).result()
-            tags = [dict(row) for row in tags_result]
-        except Exception as tag_error:
-            # If tags query fails, use a simpler approach
-            print(f"[WARNING] Original tags query failed: {str(tag_error)}, trying simplified version")
-            simplified_tags_query = f"""
-                SELECT 'All Items' as tag, COUNT(*) as usage_count
-                FROM `{BQ_COLLECTION_ITEMS_TABLE}`
-                WHERE user_id = @user_id
-            """
-            try:
-                tags_result = client.query(simplified_tags_query, job_config=job_config).result()
-                tags = [dict(row) for row in tags_result]
-            except Exception as e:
-                print(f"[ERROR] Simplified tags query also failed: {str(e)}")
-                tags = []
         
         # Process results
         total_items = next(items_result).total_items
@@ -837,9 +770,6 @@ def get_collection_analytics():
                 } for i in range(1, 6)
             ]
         
-        # Add additional data needed by the frontend
-        # We no longer need to filter here since we did it in the query
-        
         # Calculate total value
         try:
             total_value_query = f"""
@@ -853,90 +783,14 @@ def get_collection_analytics():
             print(f"[WARNING] Failed to calculate total value: {str(e)}")
             overall_total = 0
         
-        # Calculate per-collection values for wealth split
-        try:
-            collection_values_query = f"""
-                SELECT collection_name, SUM(IFNULL(value, 0)) as total_value, COUNT(*) as item_count
-                FROM `{BQ_COLLECTION_ITEMS_TABLE}`
-                WHERE user_id = @user_id
-                AND collection_name IS NOT NULL
-                AND TRIM(collection_name) != ''
-                GROUP BY collection_name
-                ORDER BY total_value DESC
-            """
-            collection_values_result = client.query(collection_values_query, job_config=job_config).result()
-            collection_values = [dict(row) for row in collection_values_result]
-            
-            # Enrich the collections with total_value
-            for collection in collections:
-                matching = next((cv for cv in collection_values if cv['collection_name'] == collection['collection_name']), None)
-                if matching:
-                    collection['total_value'] = matching['total_value']
-                    collection['item_count'] = matching['item_count']
-                else:
-                    collection['total_value'] = 0
-                    collection['item_count'] = 0
-        except Exception as e:
-            print(f"[WARNING] Failed to calculate collection values: {str(e)}")
-            # Leave collections as is
-        
-        # Add collection evolution data
-        try:
-            # For the evolution graph, generate realistic data
-            evolution_data = {
-                "labels": ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
-                "datasets": []
-            }
-            
-            # Get the evolution filter parameter
-            evolution_filter = request.args.get('evolution_filter')
-            print(f"[DEBUG] Evolution filter: {evolution_filter}")
-            
-            # Generate evolution data for each collection or the filtered one
-            if evolution_filter:
-                collections_to_include = [c for c in collections if c['collection_name'] == evolution_filter]
-            else:
-                collections_to_include = collections[:5]  # Top 5 collections only
-                
-            # Generate series data for each collection
-            for idx, collection in enumerate(collections_to_include):
-                collection_name = collection['collection_name']
-                
-                # Generate realistic growth pattern
-                items_count_data = []
-                value_data = []
-                
-                # Start with some base values - either from real data or fallback defaults
-                base_value = max(collection.get('total_value', 0) / 6, 100)
-                base_count = max(collection.get('item_count', 0) / 6, 1)
-                
-                for i in range(6):
-                    # Each month we acquire roughly 1/6 of the items, with some variability
-                    month_multiplier = (i + 1) / 6
-                    items_count_data.append(round(base_count * (i + 1)))
-                    value_data.append(round(base_value * (i + 1)))
-                
-                evolution_data['datasets'].append({
-                    "label": collection_name,
-                    "items_count": items_count_data,
-                    "value_data": value_data,
-                    "color": f"hsl({(idx * 60) % 360}, 70%, 50%)"
-                })
-            
-            # Ensure we have at least one dataset if empty
-            if not evolution_data['datasets']:
-                evolution_data['datasets'].append({
-                    "label": "Sample Collection",
-                    "items_count": [1, 2, 3, 4, 5, 6],
-                    "value_data": [100, 200, 300, 400, 500, 600],
-                    "color": "hsl(180, 70%, 50%)"
-                })
-                
-            print(f"[DEBUG] Evolution data generated: {len(evolution_data['datasets'])} datasets")
-        except Exception as e:
-            print(f"[WARNING] Failed to calculate evolution data: {str(e)}")
-            # Provide fallback data that's guaranteed to work
-            evolution_data = {
+        # Return all the data needed by the frontend
+        return jsonify({
+            "total_items": total_items,
+            "collections": collections,
+            "tags": [],
+            "valuable_items": valuable_items,
+            "overall_total": overall_total,
+            "evolution_data": {
                 "labels": ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
                 "datasets": [{
                     "label": "Sample Collection",
@@ -945,19 +799,7 @@ def get_collection_analytics():
                     "color": "hsl(180, 70%, 50%)"
                 }]
             }
-        
-        # Return all the data needed by the frontend
-        return jsonify({
-            "total_items": total_items,
-            "collections": collections,
-            "tags": tags,
-            "valuable_items": valuable_items,
-            "overall_total": overall_total,
-            "evolution_data": evolution_data
         }), 200
-    except bigquery.exceptions.GoogleCloudError as e:
-        print(f"[ERROR] BigQuery API error: {str(e)}")
-        return jsonify({"error": "BigQuery API error", "details": str(e)}), 500
     except Exception as e:
         import traceback
         print(f"[ERROR] Analytics query failed: {str(e)}")
@@ -972,8 +814,7 @@ def create_collection():
     
     Expected JSON payload:
     {
-        "collection_name": str,
-        "description": str (optional)
+        "collection_name": str
     }
     """
     user_id = session.get('user_id')
@@ -983,7 +824,7 @@ def create_collection():
         return jsonify({"error": "Collection name is required"}), 400
     
     collection_name = data.get("collection_name")
-    description = data.get("description", "")
+    collection_id = str(uuid.uuid4())
     
     client = get_bigquery_client()
     client._location = "europe-southwest1"
@@ -1011,18 +852,16 @@ def create_collection():
         # Create collection
         create_query = f"""
             INSERT INTO `{BQ_COLLECTIONS_TABLE}`
-            (user_id, collection_name, description, created_at, updated_at)
+            (user_id, collection_id, collection_name)
             VALUES
-            (@user_id, @collection_name, @description, @created_at, @updated_at)
+            (@user_id, @collection_id, @collection_name)
         """
         
         create_job_config = bigquery.QueryJobConfig(
             query_parameters=[
                 bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
-                bigquery.ScalarQueryParameter("collection_name", "STRING", collection_name),
-                bigquery.ScalarQueryParameter("description", "STRING", description),
-                bigquery.ScalarQueryParameter("created_at", "STRING", datetime.utcnow().isoformat()),
-                bigquery.ScalarQueryParameter("updated_at", "STRING", datetime.utcnow().isoformat())
+                bigquery.ScalarQueryParameter("collection_id", "STRING", collection_id),
+                bigquery.ScalarQueryParameter("collection_name", "STRING", collection_name)
             ]
         )
         
@@ -1031,7 +870,7 @@ def create_collection():
             "message": "Collection created successfully",
             "collection": {
                 "collection_name": collection_name,
-                "description": description
+                "collection_id": collection_id
             }
         }), 201
         
@@ -1047,46 +886,32 @@ def edit_collection(collection_id):
     
     Expected JSON payload:
     {
-        "collection_name": str (optional),
-        "description": str (optional)
+        "collection_name": str
     }
     """
     user_id = session.get('user_id')
     data = request.get_json()
     
-    if not any(data.values()):
-        return jsonify({"error": "No fields to update"}), 400
+    if not data.get("collection_name"):
+        return jsonify({"error": "Collection name is required"}), 400
     
     client = get_bigquery_client()
     client._location = "europe-southwest1"
     
-    # Build update query dynamically
-    update_fields = []
-    query_params = [
-        bigquery.ScalarQueryParameter("collection_id", "STRING", collection_id),
-        bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
-        bigquery.ScalarQueryParameter("updated_at", "STRING", datetime.utcnow().isoformat())
-    ]
-    
-    if "collection_name" in data:
-        update_fields.append("collection_name = @collection_name")
-        query_params.append(bigquery.ScalarQueryParameter("collection_name", "STRING", data["collection_name"]))
-    
-    if "description" in data:
-        update_fields.append("description = @description")
-        query_params.append(bigquery.ScalarQueryParameter("description", "STRING", data["description"]))
-    
-    if not update_fields:
-        return jsonify({"error": "No valid fields to update"}), 400
-    
     # Construct and execute update query
     query = f"""
         UPDATE `{BQ_COLLECTIONS_TABLE}`
-        SET {', '.join(update_fields)}
+        SET collection_name = @collection_name
         WHERE collection_id = @collection_id AND user_id = @user_id
     """
     
-    job_config = bigquery.QueryJobConfig(query_parameters=query_params)
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("collection_id", "STRING", collection_id),
+            bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
+            bigquery.ScalarQueryParameter("collection_name", "STRING", data.get("collection_name"))
+        ]
+    )
     
     try:
         client.query(query, job_config=job_config).result()
