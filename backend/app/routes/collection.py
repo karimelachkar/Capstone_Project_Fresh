@@ -1032,6 +1032,24 @@ def delete_collection(collection_id):
             
         # Get the collection name for logging
         collection_name = next(check_results).collection_name
+        print(f"[DEBUG] Deleting collection: {collection_name} (ID: {collection_id})")
+        
+        # Count items to be deleted for logging
+        count_query = f"""
+            SELECT COUNT(*) as item_count 
+            FROM `{BQ_COLLECTION_ITEMS_TABLE}`
+            WHERE user_id = @user_id AND collection_id = @collection_id
+        """
+        
+        count_params = [
+            bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
+            bigquery.ScalarQueryParameter("collection_id", "STRING", collection_id)
+        ]
+        
+        count_job_config = bigquery.QueryJobConfig(query_parameters=count_params)
+        count_result = client.query(count_query, job_config=count_job_config).result()
+        item_count = next(count_result).item_count
+        print(f"[DEBUG] Found {item_count} items to delete in collection {collection_name}")
         
         # Start a transaction (BigQuery doesn't support transactions, so we'll do our best)
         # 1. Delete all items in the collection
@@ -1047,15 +1065,7 @@ def delete_collection(collection_id):
         
         delete_items_job_config = bigquery.QueryJobConfig(query_parameters=delete_items_params)
         delete_items_result = client.query(delete_items_query, job_config=delete_items_job_config).result()
-        
-        # Count deleted items (if possible)
-        items_deleted = 0
-        try:
-            # BigQuery doesn't directly return affected rows count in a standardized way
-            # This is a best effort to get the count through job statistics
-            items_deleted = delete_items_result.total_rows if hasattr(delete_items_result, 'total_rows') else 0
-        except:
-            pass
+        print(f"[DEBUG] Deleted items query executed")
         
         # 2. Delete the collection
         delete_query = f"""
@@ -1070,11 +1080,12 @@ def delete_collection(collection_id):
         
         delete_job_config = bigquery.QueryJobConfig(query_parameters=delete_params)
         client.query(delete_query, job_config=delete_job_config).result()
+        print(f"[DEBUG] Deleted collection query executed")
         
         return jsonify({
             "message": f"Collection '{collection_name}' and all its items deleted successfully",
             "collection_id": collection_id,
-            "items_deleted": True
+            "items_deleted": item_count
         }), 200
     except Exception as e:
         print(f"[ERROR] Failed to delete collection: {str(e)}")

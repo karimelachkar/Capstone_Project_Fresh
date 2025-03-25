@@ -1980,6 +1980,9 @@
                   '<p class="success">Item added successfully!</p>';
               }
 
+              // Show global notification
+              showStatus("Item added successfully!", "success");
+
               // Refresh all analytics data to update charts and graphs
               fetchAnalytics(null, true); // Pass null for target section and true to force full refresh
 
@@ -1991,18 +1994,15 @@
                 addItemForm.reset();
                 const modal = document.getElementById("add-item-modal");
                 if (modal) modal.style.display = "none";
-
-                // Show a user notification that item was added
-                showStatus(
-                  "Item successfully added to your collection!",
-                  "success"
-                );
               }, 1500);
             } else {
               if (statusElement) {
                 statusElement.innerHTML = `<p class="error">${
                   data.error || "Failed to add item"
                 }</p>`;
+
+                // Show global notification for error
+                showStatus(data.error || "Failed to add item", "error");
               }
             }
           } catch (error) {
@@ -2010,6 +2010,9 @@
             if (statusElement) {
               statusElement.innerHTML =
                 '<p class="error">An error occurred. Please try again.</p>';
+
+              // Show global notification for error
+              showStatus("An error occurred while adding the item", "error");
             }
           }
         });
@@ -2353,10 +2356,19 @@
         `Attempting to delete collection: "${collectionName}" (ID: ${collectionId})`
       );
 
+      // Ask for confirmation
+      if (
+        !confirm(
+          `Are you sure you want to delete the collection "${collectionName}" and ALL its items? This action cannot be undone.`
+        )
+      ) {
+        return;
+      }
+
       // Clear previous status
       if (statusElement) {
         statusElement.innerHTML =
-          '<p class="loading">Deleting collection...</p>';
+          '<p class="loading">Deleting collection and its items...</p>';
       }
 
       try {
@@ -2395,19 +2407,21 @@
 
         if (response.ok) {
           if (statusElement) {
-            statusElement.innerHTML =
-              '<p class="success">Collection deleted successfully!</p>';
+            const itemsCount = data.items_deleted || 0;
+            statusElement.innerHTML = `<p class="success">Collection "${collectionName}" deleted successfully with ${itemsCount} items!</p>`;
           }
 
           // Show global notification
           showStatus(
-            `Collection "${collectionName}" deleted successfully!`,
+            `Collection "${collectionName}" and ${
+              data.items_deleted || 0
+            } items deleted successfully!`,
             "success"
           );
 
           // Refresh the data to update the UI
           setTimeout(() => {
-            fetchAnalytics();
+            fetchAnalytics(null, true); // Force full refresh
 
             // Refresh all collection dropdowns to remove the deleted collection
             refreshAllCollectionDropdowns();
