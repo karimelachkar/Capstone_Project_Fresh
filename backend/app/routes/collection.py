@@ -343,6 +343,7 @@ def add_item():
         "name": str,
         "description": str,
         "collection_name": str,
+        "collection_id": str,   
         "year": int,
         "condition": str,
         "value": float
@@ -350,6 +351,7 @@ def add_item():
     """
     user_id = session.get('user_id')
     data = request.get_json()
+    print(f"[DEBUG] Add Item - Got request data: {data}")
     
     # Validate required fields
     if not data.get("name"):
@@ -371,16 +373,118 @@ def add_item():
         except ValueError:
             return jsonify({"error": "Year must be an integer"}), 400
     
+    client = get_bigquery_client()
+    client._location = "europe-southwest1"
+    
+    # Get collection details from the request
+    collection_name = data.get("collection_name", "")
+    collection_id = data.get("collection_id")
+    
+    # If we have a collection_id, verify it exists and get the collection_name
+    if collection_id:
+        lookup_query = f"""
+            SELECT collection_id, collection_name 
+            FROM `{BQ_COLLECTIONS_TABLE}`
+            WHERE user_id = @user_id 
+            AND collection_id = @collection_id
+        """
+        
+        lookup_params = [
+            bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
+            bigquery.ScalarQueryParameter("collection_id", "STRING", collection_id)
+        ]
+        
+        lookup_job_config = bigquery.QueryJobConfig(query_parameters=lookup_params)
+        
+        try:
+            lookup_results = client.query(lookup_query, job_config=lookup_job_config).result()
+            # If we found a collection, use its values
+            row_found = False
+            for row in lookup_results:
+                collection_id = row.collection_id
+                collection_name = row.collection_name
+                row_found = True
+                print(f"[DEBUG] Verified collection {collection_name} with id {collection_id}")
+                break
+                
+            # If collection_id not found, treat it as invalid
+            if not row_found:
+                print(f"[WARNING] Collection ID {collection_id} not found for user {user_id}")
+                # Try to use the collection_name as a fallback
+                if collection_name:
+                    collection_id = None  # Reset so we'll look up by name
+                else:
+                    return jsonify({"error": "Invalid collection ID"}), 400
+        except Exception as e:
+            print(f"[ERROR] Failed to verify collection_id: {str(e)}")
+            # If verification fails, fall back to collection_name
+            collection_id = None
+    
+    # If we don't have a valid collection_id but have a name, look up or create the collection
+    if not collection_id and collection_name:
+        # Look up the collection_id for this collection_name
+        lookup_query = f"""
+            SELECT collection_id 
+            FROM `{BQ_COLLECTIONS_TABLE}`
+            WHERE user_id = @user_id 
+            AND collection_name = @collection_name
+        """
+        
+        lookup_params = [
+            bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
+            bigquery.ScalarQueryParameter("collection_name", "STRING", collection_name)
+        ]
+        
+        lookup_job_config = bigquery.QueryJobConfig(query_parameters=lookup_params)
+        
+        try:
+            lookup_results = client.query(lookup_query, job_config=lookup_job_config).result()
+            # If we found a collection_id, use it
+            for row in lookup_results:
+                collection_id = row.collection_id
+                print(f"[DEBUG] Found collection_id {collection_id} for collection {collection_name}")
+                break
+                
+            # If we couldn't find the collection, create it
+            if not collection_id:
+                print(f"[DEBUG] Collection '{collection_name}' not found, creating it")
+                collection_id = str(uuid.uuid4())
+                
+                create_query = f"""
+                    INSERT INTO `{BQ_COLLECTIONS_TABLE}`
+                    (user_id, collection_id, collection_name)
+                    VALUES
+                    (@user_id, @collection_id, @collection_name)
+                """
+                
+                create_params = [
+                    bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
+                    bigquery.ScalarQueryParameter("collection_id", "STRING", collection_id),
+                    bigquery.ScalarQueryParameter("collection_name", "STRING", collection_name)
+                ]
+                
+                create_job_config = bigquery.QueryJobConfig(query_parameters=create_params)
+                client.query(create_query, job_config=create_job_config).result()
+                print(f"[DEBUG] Created collection '{collection_name}' with id {collection_id}")
+                
+        except Exception as e:
+            print(f"[ERROR] Failed to look up collection: {str(e)}")
+            # If we can't look up or create the collection, generate a random collection_id as fallback
+            collection_id = str(uuid.uuid4())
+    elif not collection_id:
+        # If no collection info provided, generate a random collection_id and use "Uncategorized"
+        collection_id = str(uuid.uuid4())
+        collection_name = "Uncategorized"
+    
     # Prepare item data
     item_id = str(uuid.uuid4())
-    collection_id = str(uuid.uuid4())  # Generate collection_id if needed
     
     item_data = {
         "item_id": item_id,
         "user_id": user_id,
         "name": data.get("name"),
         "description": data.get("description", ""),
-        "collection_name": data.get("collection_name", ""),
+        "collection_name": collection_name,
         "collection_id": collection_id,
         "value": value,
         "year": year,
@@ -388,8 +492,6 @@ def add_item():
     }
     
     # Insert item into BigQuery
-    client = get_bigquery_client()
-    client._location = "europe-southwest1"
     
     # Prepare query parameters
     query_params = [
@@ -1006,6 +1108,7 @@ def edit_collection(collection_id):
 def delete_collection(collection_id):
     """
     API endpoint to delete a collection and all its items.
+    Deletes both the collection and all items with matching collection_id OR collection_name.
     """
     user_id = session.get('user_id')
     print(f"[DEBUG] Delete Collection Route - User ID: {user_id}, Collection ID: {collection_id}")
@@ -1013,7 +1116,7 @@ def delete_collection(collection_id):
     client = get_bigquery_client()
     client._location = "europe-southwest1"
     
-    # First, check if the collection exists
+    # First, check if the collection exists and get its name
     check_query = f"""
         SELECT collection_name FROM `{BQ_COLLECTIONS_TABLE}`
         WHERE collection_id = @collection_id AND user_id = @user_id
@@ -1031,20 +1134,22 @@ def delete_collection(collection_id):
         if check_results.total_rows == 0:
             return jsonify({"error": "Collection not found or you don't have permission to delete it"}), 404
             
-        # Get the collection name for logging
+        # Get the collection name for logging and for deleting items
         collection_name = next(check_results).collection_name
         print(f"[DEBUG] Deleting collection: {collection_name} (ID: {collection_id})")
         
-        # Count items to be deleted for logging
+        # Count items to be deleted by either collection_id OR collection_name for complete cleanup
         count_query = f"""
             SELECT COUNT(*) as item_count 
             FROM `{BQ_COLLECTION_ITEMS_TABLE}`
-            WHERE user_id = @user_id AND collection_id = @collection_id
+            WHERE user_id = @user_id 
+            AND (collection_id = @collection_id OR collection_name = @collection_name)
         """
         
         count_params = [
             bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
-            bigquery.ScalarQueryParameter("collection_id", "STRING", collection_id)
+            bigquery.ScalarQueryParameter("collection_id", "STRING", collection_id),
+            bigquery.ScalarQueryParameter("collection_name", "STRING", collection_name)
         ]
         
         count_job_config = bigquery.QueryJobConfig(query_parameters=count_params)
@@ -1052,16 +1157,17 @@ def delete_collection(collection_id):
         item_count = next(count_result).item_count
         print(f"[DEBUG] Found {item_count} items to delete in collection {collection_name}")
         
-        # Start a transaction (BigQuery doesn't support transactions, so we'll do our best)
-        # 1. Delete all items in the collection
+        # 1. Delete all items that match either the collection_id OR the collection_name
         delete_items_query = f"""
             DELETE FROM `{BQ_COLLECTION_ITEMS_TABLE}`
-            WHERE user_id = @user_id AND collection_id = @collection_id
+            WHERE user_id = @user_id 
+            AND (collection_id = @collection_id OR collection_name = @collection_name)
         """
         
         delete_items_params = [
             bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
-            bigquery.ScalarQueryParameter("collection_id", "STRING", collection_id)
+            bigquery.ScalarQueryParameter("collection_id", "STRING", collection_id),
+            bigquery.ScalarQueryParameter("collection_name", "STRING", collection_name)
         ]
         
         delete_items_job_config = bigquery.QueryJobConfig(query_parameters=delete_items_params)

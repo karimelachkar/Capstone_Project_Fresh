@@ -1931,9 +1931,14 @@
           const statusElement = document.getElementById("add-item-form-status");
 
           // Get values from the form
-          const collectionName = document.getElementById(
+          const collectionSelect = document.getElementById(
             "add-collection-name"
-          ).value;
+          );
+          const selectedOption =
+            collectionSelect.options[collectionSelect.selectedIndex];
+          const collectionName = selectedOption.text;
+          const collectionId = selectedOption.value;
+
           const itemName = document.getElementById("add-item-name").value;
           const itemYear = document.getElementById("add-item-year").value;
           const itemCondition =
@@ -1944,7 +1949,7 @@
           ).value;
 
           // Validate input
-          if (!collectionName) {
+          if (!collectionId) {
             if (statusElement)
               statusElement.innerHTML =
                 '<p class="error">Please select a collection</p>';
@@ -1964,6 +1969,7 @@
               },
               body: JSON.stringify({
                 collection_name: collectionName,
+                collection_id: collectionId,
                 name: itemName,
                 year: parseInt(itemYear),
                 condition: itemCondition,
