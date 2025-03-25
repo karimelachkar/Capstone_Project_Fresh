@@ -1270,313 +1270,207 @@
       `;
     }
 
-    // Update the wealth split (pie chart)
+    // Update wealth split chart
     function updateWealthSplit(data) {
-      if (!data || !data.collections || data.collections.length === 0) {
-        document.getElementById("wealth-split-chart").innerHTML =
-          '<div class="error-message">No collection data available</div>';
+      // Skip if there's no wealth-split element
+      const wealthSplit = document.getElementById("wealth-split");
+      if (!wealthSplit) return;
+
+      const chartContainer = document.getElementById("wealth-split-chart");
+      const canvas = document.getElementById("wealth-split-canvas");
+
+      if (!chartContainer || !canvas) return;
+
+      // Hide loading overlay
+      const loadingOverlay = chartContainer.querySelector(
+        ".chart-loading-overlay"
+      );
+      if (loadingOverlay) {
+        loadingOverlay.style.display = "none";
+      }
+
+      // Cleanup existing chart if any
+      if (window.wealthChart) {
+        window.wealthChart.destroy();
+      }
+
+      // Extract collection data
+      const collections = data.collections || [];
+      if (!collections.length) {
+        chartContainer.innerHTML = "<p>No collection data available</p>";
         return;
       }
 
-      // Show loading message while preparing data
-      document.getElementById("wealth-split-chart").innerHTML =
-        '<div class="loading">Loading chart data...</div>';
-      console.log(
-        "Updating wealth split with data:",
-        data.collections.length,
-        "collections"
-      );
+      // Sort collections by total value
+      const sortedCollections = [...collections]
+        .filter((c) => c.total_value > 0)
+        .sort((a, b) => b.total_value - a.total_value)
+        .slice(0, 5); // Top 5 collections
 
-      try {
-        // Deduplicate collections by normalized name
-        const uniqueCollections = new Map();
-
-        data.collections.forEach((collection) => {
-          const name = collection.collection_name;
-          const nameLower = name.toLowerCase().trim();
-
-          // If this collection name wasn't encountered before, or has a higher value than previous one
-          if (
-            !uniqueCollections.has(nameLower) ||
-            (collection.total_value || 0) >
-              (uniqueCollections.get(nameLower).total_value || 0)
-          ) {
-            uniqueCollections.set(nameLower, collection);
-          }
-        });
-
-        // Convert back to array and get top collections by value
-        const deduplicatedCollections = Array.from(
-          uniqueCollections.values()
-        ).sort((a, b) => (b.total_value || 0) - (a.total_value || 0));
-
-        // Show only top 5 collections for readability
-        const topCollections = deduplicatedCollections.slice(0, 5);
-
-        // Create data for the chart
-        const labels = [];
-        const values = [];
-
-        topCollections.forEach((collection) => {
-          if (collection.collection_name && collection.total_value > 0) {
-            labels.push(collection.collection_name);
-            values.push(collection.total_value || 0);
-          }
-        });
-
-        if (labels.length === 0 || values.length === 0) {
-          document.getElementById("wealth-split-chart").innerHTML =
-            '<div class="error-message">No valid collection data to display</div>';
-          return;
-        }
-
-        // Create colors using golden ratio for even distribution
-        const colors = [];
-        const goldenRatio = 0.618033988749895;
-        let h = Math.random();
-
-        for (let i = 0; i < labels.length; i++) {
-          h = (h + goldenRatio) % 1;
-          const hue = h * 360;
-          colors.push(`hsl(${hue}, 70%, 60%)`);
-        }
-
-        // Clear the loading message
-        document.getElementById("wealth-split-chart").innerHTML = "";
-
-        // Create canvas element
-        const canvas = document.createElement("canvas");
-        canvas.id = "wealth-split-canvas";
-        document.getElementById("wealth-split-chart").appendChild(canvas);
-
-        // Get context and create chart
-        const ctx = canvas.getContext("2d");
-
-        // Check if there's an existing chart instance and destroy it
-        if (window.wealthChart) {
-          window.wealthChart.destroy();
-        }
-
-        // Create new chart instance
-        window.wealthChart = new Chart(ctx, {
-          type: "pie",
-          data: {
-            labels: labels,
-            datasets: [
-              {
-                data: values,
-                backgroundColor: colors,
-                borderWidth: 1,
-              },
-            ],
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            layout: {
-              padding: {
-                top: 10,
-                bottom: 10,
-                left: 10,
-                right: 10,
-              },
-            },
-            plugins: {
-              legend: {
-                position: "bottom",
-                labels: {
-                  boxWidth: 15,
-                  padding: 15,
-                  font: {
-                    size: 14, // Increased from 10 to 14
-                    weight: "bold",
-                  },
-                },
-              },
-              tooltip: {
-                titleFont: {
-                  size: 16,
-                },
-                bodyFont: {
-                  size: 14,
-                },
-                callbacks: {
-                  label: function (context) {
-                    const value = context.parsed;
-                    const total = context.dataset.data.reduce(
-                      (a, b) => a + b,
-                      0
-                    );
-                    const percentage = Math.round((value / total) * 100);
-                    return `$${value.toLocaleString()} (${percentage}%)`;
-                  },
-                },
-              },
-            },
-          },
-        });
-      } catch (error) {
-        console.error("Error creating wealth split chart:", error);
-        document.getElementById("wealth-split-chart").innerHTML =
-          '<div class="error-message">Failed to create chart: ' +
-          error.message +
-          "</div>";
+      if (!sortedCollections.length) {
+        chartContainer.innerHTML =
+          "<p>No value data available for collections</p>";
+        return;
       }
+
+      // Prepare chart data
+      const labels = sortedCollections.map((c) => c.collection_name);
+      const values = sortedCollections.map((c) => c.total_value || 0);
+      const backgroundColors = [
+        "rgba(255, 99, 132, 0.8)",
+        "rgba(54, 162, 235, 0.8)",
+        "rgba(255, 206, 86, 0.8)",
+        "rgba(75, 192, 192, 0.8)",
+        "rgba(153, 102, 255, 0.8)",
+      ];
+
+      // Create chart
+      const ctx = canvas.getContext("2d");
+      window.wealthChart = new Chart(ctx, {
+        type: "pie",
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              data: values,
+              backgroundColor: backgroundColors,
+              borderColor: backgroundColors.map((c) => c.replace("0.8", "1")),
+              borderWidth: 1,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: "right",
+              labels: {
+                font: {
+                  size: 12,
+                },
+                color: "#333",
+              },
+            },
+            tooltip: {
+              callbacks: {
+                label: function (context) {
+                  const value = context.raw;
+                  return `$${value.toLocaleString()}`;
+                },
+              },
+            },
+          },
+        },
+      });
     }
 
-    // Function to update the evolution graph
+    // Update evolution graph
     function updateEvolutionGraph(data) {
-      // Get the container for error messages
-      const chartContainer = document.getElementById(
-        "evolution-chart-container"
-      );
+      // Skip if there's no evolution-chart element
+      const evolutionChart = document.getElementById("evolution-chart");
+      if (!evolutionChart) return;
 
-      // Check if data is available
-      if (!data || !data.evolution) {
-        if (chartContainer) {
-          chartContainer.innerHTML =
-            '<div class="error-message">No evolution data available</div>';
-        }
+      const canvas = document.getElementById("evolution-chart-canvas");
+      if (!canvas) return;
+
+      // Hide loading overlay
+      const chartContainer = document.getElementById("evolution-chart");
+      const loadingOverlay = chartContainer.querySelector(
+        ".chart-loading-overlay"
+      );
+      if (loadingOverlay) {
+        loadingOverlay.style.display = "none";
+      }
+
+      // Get the selected metric (items_count or value)
+      const metricSelector = document.getElementById("evolution-metric");
+      const selectedMetric = metricSelector
+        ? metricSelector.value
+        : "value_data";
+
+      // Store data for later use when switching metrics
+      window.evolutionState = {
+        data: data,
+        metric: selectedMetric,
+      };
+
+      // Cleanup existing chart if any
+      if (window.evolutionChart) {
+        window.evolutionChart.destroy();
+      }
+
+      // Extract evolution data
+      const evolutionData = data.evolution_data;
+      if (
+        !evolutionData ||
+        !evolutionData.datasets ||
+        !evolutionData.datasets.length
+      ) {
+        console.error("No evolution data available");
         return;
       }
 
-      // Store the data for reuse when switching metrics
-      window.evolutionState = window.evolutionState || {};
-      window.evolutionState.data = data;
+      // Prepare chart datasets
+      const datasets = evolutionData.datasets.map((dataset) => {
+        return {
+          label: dataset.label,
+          data:
+            selectedMetric === "items_count"
+              ? dataset.items_count
+              : dataset.value_data,
+          borderColor: dataset.color,
+          backgroundColor: dataset.color
+            .replace(")", ", 0.2)")
+            .replace("hsl", "hsla"),
+          borderWidth: 2,
+          tension: 0.4,
+          fill: true,
+        };
+      });
 
-      try {
-        // Get the selected metric
-        const metricSelector = document.getElementById("evolution-metric");
-        const metric = metricSelector ? metricSelector.value : "items";
-        console.log("Selected metric:", metric);
-
-        // Determine if we use years or dates for labels
-        let labels = data.evolution.years || data.evolution.dates || [];
-
-        // Get values based on the selected metric
-        let values = [];
-        if (metric === "items") {
-          values = data.evolution.items || [];
-          console.log("Using items data:", values);
-        } else if (metric === "amount") {
-          values = data.evolution.amounts || [];
-          console.log("Using amounts data:", values);
-        }
-
-        // Ensure we have data to display
-        if (labels.length === 0 || values.length === 0) {
-          // Check if we have debug info to display a better message
-          let errorMessage = "No evolution data to display";
-
-          if (data.evolution.debug_info) {
-            if (data.evolution.debug_info.includes("Not enough items")) {
-              errorMessage =
-                "Add more items to see your collection evolve over time";
-            } else {
-              errorMessage = data.evolution.debug_info;
-            }
-          }
-
-          if (chartContainer) {
-            chartContainer.innerHTML = `<div class="error-message">${errorMessage}</div>`;
-          }
-          return;
-        }
-
-        // Ensure arrays are the same length
-        const minLength = Math.min(labels.length, values.length);
-        labels = labels.slice(0, minLength);
-        values = values.slice(0, minLength);
-
-        // Hide loading overlay
-        const loadingOverlay = document.querySelector(
-          "#evolution-chart .chart-loading-overlay"
-        );
-        if (loadingOverlay) {
-          loadingOverlay.style.display = "none";
-        }
-
-        // Get the canvas
-        const canvas = document.getElementById("evolution-chart-canvas");
-        if (!canvas) {
-          console.error("Evolution chart canvas not found");
-          return;
-        }
-
-        // Check if there's an existing chart instance and destroy it
-        if (window.evolutionChart) {
-          window.evolutionChart.destroy();
-        }
-
-        // Create new chart
-        const ctx = canvas.getContext("2d");
-        window.evolutionChart = new Chart(ctx, {
-          type: "line",
-          data: {
-            labels: labels,
-            datasets: [
-              {
-                label:
-                  metric === "items" ? "Number of Items" : "Total Amount Spent",
-                data: values,
-                borderColor: "rgba(75, 192, 192, 1)",
-                backgroundColor: "rgba(75, 192, 192, 0.2)",
-                borderWidth: 2,
-                fill: true,
-                tension: 0.4,
-              },
-            ],
-          },
-          options: {
-            responsive: true,
-            plugins: {
-              legend: {
+      // Create chart
+      const ctx = canvas.getContext("2d");
+      window.evolutionChart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: evolutionData.labels,
+          datasets: datasets,
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: {
                 display: true,
-                position: "top",
-              },
-              tooltip: {
-                callbacks: {
-                  label: function (context) {
-                    const value = context.raw;
-                    if (metric === "items") {
-                      return `Items: ${value}`;
-                    } else {
-                      return `Amount: $${value.toLocaleString()}`;
-                    }
-                  },
-                },
+                text:
+                  selectedMetric === "items_count"
+                    ? "Number of Items"
+                    : "Total Value ($)",
               },
             },
-            scales: {
-              y: {
-                beginAtZero: true,
-                title: {
-                  display: true,
-                  text: metric === "items" ? "Number of Items" : "Amount ($)",
-                },
-              },
-              x: {
-                title: {
-                  display: true,
-                  text: "Year",
+          },
+          plugins: {
+            legend: {
+              position: "top",
+            },
+            tooltip: {
+              callbacks: {
+                label: function (context) {
+                  const label = context.dataset.label || "";
+                  const value = context.raw;
+                  if (selectedMetric === "value_data") {
+                    return `${label}: $${value.toLocaleString()}`;
+                  } else {
+                    return `${label}: ${value} items`;
+                  }
                 },
               },
             },
           },
-        });
-
-        // Flag as initialized
-        window.evolutionState.initialized = true;
-      } catch (error) {
-        console.error("Error creating evolution chart:", error);
-        const container = document.getElementById("evolution-chart-container");
-        if (container) {
-          container.innerHTML =
-            '<div class="error-message">Failed to create chart: ' +
-            error.message +
-            "</div>";
-        }
-      }
+        },
+      });
     }
 
     // Function to update collection filters with current collections
@@ -1837,7 +1731,9 @@
           // Add collections to dropdown
           data.collections.forEach((collection) => {
             const option = document.createElement("option");
-            option.value = collection.collection_name;
+            // Use collection_id as the value instead of collection_name
+            option.value =
+              collection.collection_id || collection.collection_name;
             option.textContent = collection.collection_name;
             dropdown.appendChild(option);
           });
@@ -2156,6 +2052,9 @@
               statusDiv.textContent = "Item updated successfully!";
               statusDiv.className = "status-success";
 
+              // Show global notification
+              showStatus("Item updated successfully!", "success");
+
               // Close modal and refresh data after a delay
               setTimeout(() => {
                 // Close the modal using vanilla JS
@@ -2185,6 +2084,9 @@
               statusDiv.textContent =
                 "Failed to update item. Please try again.";
               statusDiv.className = "status-error";
+
+              // Show global notification
+              showStatus("Failed to update item. Please try again.", "error");
             });
         });
       }
@@ -2241,6 +2143,9 @@
             statusDiv.innerHTML =
               '<p class="success">Item deleted successfully</p>';
 
+            // Show global notification
+            showStatus("Item deleted successfully!", "success");
+
             // Remove the item from the UI with animation
             const itemElement = document.querySelector(
               `[data-item-id="${itemId}"]`
@@ -2263,11 +2168,17 @@
             statusDiv.innerHTML = `<p class="error">${
               data.error || "Failed to delete item"
             }</p>`;
+
+            // Show global notification
+            showStatus(data.error || "Failed to delete item", "error");
           }
         } catch (error) {
           console.error("Error deleting item:", error);
           statusDiv.innerHTML =
             '<p class="error">An error occurred while deleting</p>';
+
+          // Show global notification
+          showStatus("An error occurred while deleting the item", "error");
         }
       });
     }
@@ -2432,8 +2343,15 @@
         return;
       }
 
-      const collectionName = collectionDropdown.value;
-      console.log(`Attempting to delete collection: "${collectionName}"`);
+      // Get the selected option
+      const selectedOption =
+        collectionDropdown.options[collectionDropdown.selectedIndex];
+      const collectionName = selectedOption.text;
+      const collectionId = selectedOption.value;
+
+      console.log(
+        `Attempting to delete collection: "${collectionName}" (ID: ${collectionId})`
+      );
 
       // Clear previous status
       if (statusElement) {
@@ -2444,7 +2362,7 @@
       try {
         // Send DELETE request to the backend API
         const url = `/api/collection/delete/${encodeURIComponent(
-          collectionName
+          collectionId
         )}`;
         console.log(`Sending DELETE request to: ${url}`);
 
@@ -2463,25 +2381,11 @@
           headers["X-CSRF-Token"] = csrfToken;
         }
 
-        let response = await fetch(url, {
+        const response = await fetch(url, {
           method: "DELETE",
           headers: headers,
           credentials: "same-origin", // This ensures cookies are sent with the request
         });
-
-        // If we get a 403 error, try using POST with _method=DELETE as a fallback
-        if (response.status === 403) {
-          console.log("DELETE request returned 403. Trying POST fallback...");
-          response = await fetch(`/api/collection/delete`, {
-            method: "POST",
-            headers: headers,
-            credentials: "same-origin",
-            body: JSON.stringify({
-              _method: "DELETE",
-              collection_name: collectionName,
-            }),
-          });
-        }
 
         console.log(
           `Response status: ${response.status}, ${response.statusText}`
@@ -2494,6 +2398,12 @@
             statusElement.innerHTML =
               '<p class="success">Collection deleted successfully!</p>';
           }
+
+          // Show global notification
+          showStatus(
+            `Collection "${collectionName}" deleted successfully!`,
+            "success"
+          );
 
           // Refresh the data to update the UI
           setTimeout(() => {
@@ -2516,6 +2426,9 @@
             const errorMsg = data.error || "Failed to delete collection";
             console.error(`Error deleting collection: ${errorMsg}`);
             statusElement.innerHTML = `<p class="error">${errorMsg}</p>`;
+
+            // Show global notification
+            showStatus(errorMsg, "error");
           }
         }
       } catch (error) {
@@ -2523,6 +2436,12 @@
         if (statusElement) {
           statusElement.innerHTML =
             '<p class="error">An error occurred. Please try again.</p>';
+
+          // Show global notification
+          showStatus(
+            "An error occurred while deleting the collection",
+            "error"
+          );
         }
       }
     }
