@@ -1974,6 +1974,11 @@
 
             const data = await response.json();
 
+            // Clear the status element first to ensure no mixed messages
+            if (statusElement) {
+              statusElement.innerHTML = "";
+            }
+
             if (response.ok) {
               if (statusElement) {
                 statusElement.innerHTML =
@@ -1987,22 +1992,26 @@
               fetchAnalytics(null, true); // Pass null for target section and true to force full refresh
 
               // Also refresh the collection list to show any new collections
-              loadCollections();
+              refreshAllCollectionDropdowns();
 
               // Clear the form and close the modal after a delay
               setTimeout(() => {
                 addItemForm.reset();
                 const modal = document.getElementById("add-item-modal");
                 if (modal) modal.style.display = "none";
+
+                // Also clear the status element when closing the modal
+                if (statusElement) {
+                  statusElement.innerHTML = "";
+                }
               }, 1500);
             } else {
               if (statusElement) {
-                statusElement.innerHTML = `<p class="error">${
-                  data.error || "Failed to add item"
-                }</p>`;
+                const errorMsg = data.error || "Failed to add item";
+                statusElement.innerHTML = `<p class="error">${errorMsg}</p>`;
 
                 // Show global notification for error
-                showStatus(data.error || "Failed to add item", "error");
+                showStatus(errorMsg, "error");
               }
             }
           } catch (error) {
