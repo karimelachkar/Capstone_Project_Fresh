@@ -915,9 +915,9 @@ def get_collection_analytics():
         except Exception as e:
             print(f"[WARNING] Failed to get collection values: {str(e)}")
         
-        # Get evolution data - using only real collection data
+        # Get evolution data - grouping items by year
         evolution_data = {
-            "labels": ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+            "years": [],
             "datasets": []
         }
 
@@ -925,50 +925,178 @@ def get_collection_analytics():
             # Check if we need to filter by collection
             evolution_filter = request.args.get('evolution_filter')
             
-            print(f"[DEBUG] Getting real evolution data for collections")
+            print(f"[DEBUG] Getting real evolution data for collections grouped by year")
             
-            # Use the actual collection values without generating growth curves
+            # Get all years that have items
+            years_query = f"""
+                SELECT DISTINCT year
+                FROM `{BQ_COLLECTION_ITEMS_TABLE}`
+                WHERE user_id = @user_id AND year IS NOT NULL
+                ORDER BY year ASC
+            """
+            
+            years_result = client.query(years_query, job_config=job_config).result()
+            years = [row.year for row in years_result]
+            
+            if not years:
+                print("[DEBUG] No year data found in items")
+                years = []
+            else:
+                print(f"[DEBUG] Found years with data: {years}")
+                evolution_data["years"] = years
+            
+            # Get collection data for each collection
             if collection_values:
-                # Filter collections if requested
+                # If a specific collection is selected, filter to just that one
                 filtered_collections = []
-                if evolution_filter:
+                if evolution_filter and evolution_filter != 'all':
                     print(f"[DEBUG] Evolution filter applied: {evolution_filter}")
                     filtered_collections = [c for c in collection_values if c['collection_id'] == evolution_filter]
                     if not filtered_collections:
                         filtered_collections = [c for c in collection_values if c['collection_name'] == evolution_filter]
-                else:
-                    # Use all collections with value > 0
-                    filtered_collections = [c for c in collection_values if float(c.get('total_value', 0) or 0) > 0]
-                
-                print(f"[DEBUG] Using {len(filtered_collections)} collections for evolution chart")
-                
-                # Add each collection as a flat line showing current value
-                # This is the most honest representation without historical data
-                for idx, collection in enumerate(filtered_collections):
-                    collection_name = collection['collection_name']
-                    total_value = float(collection.get('total_value', 0) or 0)
-                    item_count = int(collection.get('item_count', 0) or 0)
                     
-                    if total_value <= 0:
-                        print(f"[DEBUG] Skipping collection {collection_name} with zero value")
-                        continue
+                    # If we found a collection, get its data by year
+                    if filtered_collections:
+                        collection = filtered_collections[0]
+                        collection_name = collection['collection_name']
                         
-                    print(f"[DEBUG] Adding evolution data for {collection_name}: current value={total_value}, items={item_count}")
+                        # Query to get item counts and values by year for this collection
+                        collection_years_query = f"""
+                            SELECT 
+                                year, 
+                                COUNT(*) as item_count,
+                                SUM(IFNULL(value, 0)) as total_value
+                            FROM `{BQ_COLLECTION_ITEMS_TABLE}`
+                            WHERE user_id = @user_id 
+                            AND year IS NOT NULL
+                            AND (collection_id = @collection_id OR collection_name = @collection_name)
+                            GROUP BY year
+                            ORDER BY year ASC
+                        """
+                        
+                        collection_years_params = [
+                            bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
+                            bigquery.ScalarQueryParameter("collection_id", "STRING", collection['collection_id']),
+                            bigquery.ScalarQueryParameter("collection_name", "STRING", collection['collection_name'])
+                        ]
+                        
+                        collection_years_config = bigquery.QueryJobConfig(query_parameters=collection_years_params)
+                        collection_years_result = client.query(collection_years_query, job_config=collection_years_config).result()
+                        
+                        # Build data arrays aligned with the years array
+                        year_data = {year: {"count": 0, "value": 0} for year in years}
+                        for row in collection_years_result:
+                            if row.year in year_data:
+                                year_data[row.year]["count"] = row.item_count
+                                year_data[row.year]["value"] = float(row.total_value)
+                        
+                        # Extract the data in order
+                        items_count = [year_data[year]["count"] for year in years]
+                        value_data = [year_data[year]["value"] for year in years]
+                        
+                        # Add this collection as a dataset
+                        evolution_data['datasets'].append({
+                            "label": collection_name,
+                            "items_count": items_count,
+                            "value_data": value_data,
+                            "color": "hsl(180, 70%, 50%)"
+                        })
+                        
+                        print(f"[DEBUG] Added evolution data for collection {collection_name}: {items_count} items, ${value_data} value")
+                else:
+                    # Show all collections combined
+                    # Query to get total item counts and values by year across all collections
+                    all_years_query = f"""
+                        SELECT 
+                            year, 
+                            COUNT(*) as item_count,
+                            SUM(IFNULL(value, 0)) as total_value
+                        FROM `{BQ_COLLECTION_ITEMS_TABLE}`
+                        WHERE user_id = @user_id 
+                        AND year IS NOT NULL
+                        GROUP BY year
+                        ORDER BY year ASC
+                    """
                     
-                    # Create flat line showing current values for each month
-                    # This shows the current state without misleading growth patterns
+                    all_years_result = client.query(all_years_query, job_config=job_config).result()
+                    
+                    # Build data arrays aligned with the years array
+                    year_data = {year: {"count": 0, "value": 0} for year in years}
+                    for row in all_years_result:
+                        if row.year in year_data:
+                            year_data[row.year]["count"] = row.item_count
+                            year_data[row.year]["value"] = float(row.total_value)
+                    
+                    # Extract the data in order
+                    items_count = [year_data[year]["count"] for year in years]
+                    value_data = [year_data[year]["value"] for year in years]
+                    
+                    # Add combined data as a single dataset
                     evolution_data['datasets'].append({
-                        "label": collection_name,
-                        "items_count": [item_count] * 6,  # Same value for all months
-                        "value_data": [total_value] * 6,  # Same value for all months
-                        "color": f"hsl({(idx * 60) % 360}, 70%, 50%)"
+                        "label": "All Collections",
+                        "items_count": items_count,
+                        "value_data": value_data,
+                        "color": "hsl(180, 70%, 50%)"
                     })
+                    
+                    print(f"[DEBUG] Added evolution data for all collections: {items_count} items, ${value_data} value")
+                    
+                    # If there are multiple collections with data, add them as separate datasets
+                    if len([c for c in collection_values if float(c.get('total_value', 0) or 0) > 0]) > 1:
+                        for idx, collection in enumerate([c for c in collection_values if float(c.get('total_value', 0) or 0) > 0]):
+                            if idx >= 5:  # Limit to top 5 collections to avoid clutter
+                                break
+                                
+                            collection_name = collection['collection_name']
+                            
+                            # Query to get item counts and values by year for this collection
+                            collection_years_query = f"""
+                                SELECT 
+                                    year, 
+                                    COUNT(*) as item_count,
+                                    SUM(IFNULL(value, 0)) as total_value
+                                FROM `{BQ_COLLECTION_ITEMS_TABLE}`
+                                WHERE user_id = @user_id 
+                                AND year IS NOT NULL
+                                AND (collection_id = @collection_id OR collection_name = @collection_name)
+                                GROUP BY year
+                                ORDER BY year ASC
+                            """
+                            
+                            collection_years_params = [
+                                bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
+                                bigquery.ScalarQueryParameter("collection_id", "STRING", collection['collection_id']),
+                                bigquery.ScalarQueryParameter("collection_name", "STRING", collection['collection_name'])
+                            ]
+                            
+                            collection_years_config = bigquery.QueryJobConfig(query_parameters=collection_years_params)
+                            collection_years_result = client.query(collection_years_query, job_config=collection_years_config).result()
+                            
+                            # Build data arrays aligned with the years array
+                            year_data = {year: {"count": 0, "value": 0} for year in years}
+                            for row in collection_years_result:
+                                if row.year in year_data:
+                                    year_data[row.year]["count"] = row.item_count
+                                    year_data[row.year]["value"] = float(row.total_value)
+                            
+                            # Extract the data in order
+                            items_count = [year_data[year]["count"] for year in years]
+                            value_data = [year_data[year]["value"] for year in years]
+                            
+                            # Add this collection as a dataset
+                            evolution_data['datasets'].append({
+                                "label": collection_name,
+                                "items_count": items_count,
+                                "value_data": value_data,
+                                "color": f"hsl({(idx * 60) % 360}, 70%, 50%)"
+                            })
+                            
+                            print(f"[DEBUG] Added evolution data for collection {collection_name}: {items_count} items, ${value_data} value")
             
             # If no datasets were added, leave the datasets empty
             if not evolution_data['datasets']:
-                print("[DEBUG] No collections with value > 0 found for evolution chart")
-                # Return empty datasets array, don't add fake data
-                
+                print("[DEBUG] No collections with data found for evolution chart")
+            
         except Exception as e:
             print(f"[ERROR] Failed to get evolution data: {str(e)}")
             import traceback

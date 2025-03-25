@@ -198,11 +198,12 @@
         <h4 class="evolution-chart-title">Collection Evolution Over Time</h4>
         <div class="filter-container">
           <select id="evolution-metric" class="collection-filter">
-            <option value="items">Number of Items</option>
-            <option value="amount">Total Value</option>
+            <option value="items_count">Number of Items</option>
+            <option value="value_data">Total Value ($)</option>
           </select>
           <select id="evolution-collection" class="collection-filter">
             <option value="all">All Collections</option>
+            <!-- Will be populated with collections -->
           </select>
         </div>
         <div class="card-content">
@@ -575,6 +576,8 @@
       const evolutionFilter = document.getElementById("evolution-collection");
       if (evolutionFilter) {
         evolutionFilter.addEventListener("change", function () {
+          console.log("Evolution filter changed to:", this.value);
+          // Refresh the evolution chart with the selected filter
           fetchAnalytics("evolution-chart", false, null, null, this.value);
         });
       }
@@ -598,7 +601,10 @@
       const metricSelector = document.getElementById("evolution-metric");
       if (metricSelector) {
         metricSelector.addEventListener("change", function () {
+          console.log("Evolution metric changed to:", this.value);
+          // Use the existing data to update the chart with the new metric
           if (window.evolutionState && window.evolutionState.data) {
+            window.evolutionState.metric = this.value; // Update the stored metric
             updateEvolutionGraph(window.evolutionState.data);
           }
         });
@@ -1394,11 +1400,11 @@
         loadingOverlay.style.display = "none";
       }
 
-      // Get the selected metric (items_count or value)
+      // Get the selected metric (items_count or value_data)
       const metricSelector = document.getElementById("evolution-metric");
       const selectedMetric = metricSelector
         ? metricSelector.value
-        : "value_data";
+        : "items_count"; // default to items count
 
       // Store data for later use when switching metrics
       window.evolutionState = {
@@ -1416,9 +1422,19 @@
       if (
         !evolutionData ||
         !evolutionData.datasets ||
-        !evolutionData.datasets.length
+        !evolutionData.datasets.length ||
+        !evolutionData.years ||
+        !evolutionData.years.length
       ) {
         console.error("No evolution data available");
+        // Show message in chart area
+        const chartContainer = document.getElementById(
+          "evolution-chart-container"
+        );
+        if (chartContainer) {
+          chartContainer.innerHTML =
+            '<p class="no-data">No year data available. Add items with year information to see the evolution chart.</p>';
+        }
         return;
       }
 
@@ -1445,7 +1461,7 @@
       window.evolutionChart = new Chart(ctx, {
         type: "line",
         data: {
-          labels: evolutionData.labels,
+          labels: evolutionData.years.map(String), // Convert years to strings
           datasets: datasets,
         },
         options: {
@@ -1459,6 +1475,12 @@
                   selectedMetric === "items_count"
                     ? "Number of Items"
                     : "Total Value ($)",
+              },
+            },
+            x: {
+              title: {
+                display: true,
+                text: "Year",
               },
             },
           },
@@ -1483,10 +1505,6 @@
                     }`;
                   }
                 },
-                // Add title callback to clarify this is current data
-                title: function (tooltipItems) {
-                  return `Current values (as of ${new Date().toLocaleDateString()})`;
-                },
               },
             },
           },
@@ -1508,15 +1526,16 @@
           );
 
       filters.forEach((filter) => {
-        // Store current value and first option
+        // Store current value
         const currentValue = filter.value;
-        const firstOption = filter.options[0];
 
-        // Clear the filter
-        filter.innerHTML = "";
+        // Clear the filter but remember the first option
+        const firstOptionHTML =
+          filter.id === "evolution-collection"
+            ? '<option value="all">All Collections</option>'
+            : '<option value="">All Collections</option>';
 
-        // Add back the first option (typically "All Collections")
-        filter.appendChild(firstOption);
+        filter.innerHTML = firstOptionHTML;
 
         // Keep track of collection names already added to avoid duplicates
         const addedCollections = new Set();
@@ -1533,8 +1552,16 @@
 
           // Create and add the option
           const option = document.createElement("option");
-          option.value = collection.collection_name;
+
+          // For evolution filter, use collection_id as value
+          if (filter.id === "evolution-collection") {
+            option.value = collection.collection_id;
+          } else {
+            option.value = collection.collection_name;
+          }
+
           option.textContent = collection.collection_name;
+          option.dataset.collectionId = collection.collection_id;
           filter.appendChild(option);
         });
 
