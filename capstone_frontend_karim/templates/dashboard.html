@@ -1873,25 +1873,33 @@
           const collectionId = selectedOption.dataset.collectionId;
           const newCollectionName = newNameInput.value.trim();
 
+          // Clear any previous error messages
+          if (statusElement) {
+            statusElement.innerHTML = "";
+          }
+
           // Validate input
-          if (!selectedOption || !collectionId) {
-            if (statusElement)
+          if (!selectedOption || selectedOption.value === "") {
+            if (statusElement) {
               statusElement.innerHTML =
                 '<p class="error">Please select a collection to edit</p>';
+            }
             return;
           }
 
           if (!newCollectionName) {
-            if (statusElement)
+            if (statusElement) {
               statusElement.innerHTML =
                 '<p class="error">Please enter a new collection name</p>';
+            }
             return;
           }
 
           // Show loading state
-          if (statusElement)
+          if (statusElement) {
             statusElement.innerHTML =
               '<p class="loading">Updating collection...</p>';
+          }
 
           try {
             const response = await fetch(
@@ -1913,9 +1921,6 @@
                   '<p class="success">Collection updated successfully!</p>';
               }
 
-              // Show global notification
-              showStatus("Collection updated successfully!", "success");
-
               // Refresh data to show the updated name
               fetchAnalytics(null, true);
 
@@ -1931,8 +1936,6 @@
                   data.error || "Failed to update collection"
                 }</p>`;
               }
-              // Show global notification for error
-              showStatus(data.error || "Failed to update collection", "error");
             }
           } catch (error) {
             console.error("Error updating collection:", error);
@@ -1940,11 +1943,6 @@
               statusElement.innerHTML =
                 '<p class="error">An error occurred. Please try again.</p>';
             }
-            // Show global notification for error
-            showStatus(
-              "An error occurred while updating the collection",
-              "error"
-            );
           }
         });
       }
