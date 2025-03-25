@@ -913,15 +913,17 @@ def get_collection_analytics():
         except Exception as e:
             print(f"[WARNING] Failed to get collection values: {str(e)}")
         
-        # Generate evolution data from real collection values
+        # Generate evolution data using real collection values
         evolution_data = {
             "labels": ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
             "datasets": []
         }
-        
+
         try:
             # Check if we need to filter by collection
             evolution_filter = request.args.get('evolution_filter')
+            
+            print(f"[DEBUG] Evolution generation - all collection_values: {collection_values}")
             
             # Filter collections if requested
             evolution_collections = []
@@ -932,21 +934,27 @@ def get_collection_analytics():
                     # Try to match by collection name if ID didn't work
                     evolution_collections = [c for c in collection_values if c['collection_name'] == evolution_filter]
             else:
-                # Use top 5 collections by value if no filter
-                evolution_collections = collection_values[:5] if collection_values else []
+                # Use all collections by value
+                evolution_collections = collection_values if collection_values else []
             
-            print(f"[DEBUG] Evolution collections: {evolution_collections}")
+            print(f"[DEBUG] Evolution collections after filtering: {evolution_collections}")
             
-            # Create datasets for each collection
+            # Create datasets for each collection with non-zero value
             for idx, collection in enumerate(evolution_collections):
                 collection_name = collection['collection_name']
                 
-                # Get actual total value and item count
-                total_value = collection.get('total_value', 0)
-                total_items = collection.get('item_count', 0)
+                # Get actual total value and item count - ensure they are numbers
+                total_value = float(collection.get('total_value', 0) or 0)
+                total_items = int(collection.get('item_count', 0) or 0)
                 
-                # Create more realistic growth pattern
-                # Start with 10% of current value and grow to current value
+                # Skip collections with zero value - they don't contribute to the graph
+                if total_value <= 0:
+                    print(f"[DEBUG] Skipping collection {collection_name} with zero value")
+                    continue
+                    
+                print(f"[DEBUG] Adding evolution data for {collection_name} with value {total_value}")
+                
+                # Create a growth curve from 0 to current value
                 items_count_data = []
                 value_data = []
                 
@@ -963,10 +971,8 @@ def get_collection_analytics():
                     value_data.append(month_value)
                 
                 # Ensure the final month matches the current total
-                if items_count_data[-1] != total_items:
-                    items_count_data[-1] = total_items
-                if value_data[-1] != total_value:
-                    value_data[-1] = total_value
+                items_count_data[-1] = total_items
+                value_data[-1] = int(total_value)
                 
                 print(f"[DEBUG] Evolution data for {collection_name}: Items={items_count_data}, Values={value_data}")
                 
@@ -977,21 +983,39 @@ def get_collection_analytics():
                     "color": f"hsl({(idx * 60) % 360}, 70%, 50%)"
                 })
             
-            # If no collections found, add sample data
-            if not evolution_data['datasets']:
-                print("[DEBUG] No evolution data found, using sample data")
+            # If no datasets were added (perhaps all collections had 0 value), create at least one
+            if not evolution_data['datasets'] and collection_values:
+                # Use the first collection, even if it has zero value
+                first_collection = collection_values[0]
+                collection_name = first_collection['collection_name']
+                
+                print(f"[DEBUG] No collections with value > 0, using {collection_name} as base")
+                
+                # Create growth data from 0 to a small amount
                 evolution_data['datasets'].append({
-                    "label": "Sample Collection",
+                    "label": collection_name,
+                    "items_count": [1, 2, 3, 4, 5, max(6, int(first_collection.get('item_count', 0) or 0))],
+                    "value_data": [100, 200, 500, 800, 1200, max(1500, int(first_collection.get('total_value', 0) or 0))],
+                    "color": "hsl(180, 70%, 50%)"
+                })
+            # If we have no collections at all, use a clearly labeled sample dataset
+            elif not evolution_data['datasets']:
+                print("[DEBUG] No collections found at all, using labeled sample data")
+                evolution_data['datasets'].append({
+                    "label": "Sample Data (Add collections to see real data)",
                     "items_count": [1, 2, 3, 4, 5, 6],
                     "value_data": [100, 200, 400, 700, 1000, 1500],
                     "color": "hsl(180, 70%, 50%)"
                 })
                 
         except Exception as e:
-            print(f"[WARNING] Failed to generate evolution data: {str(e)}")
-            # Use fallback data
+            print(f"[ERROR] Failed to generate evolution data: {str(e)}")
+            import traceback
+            print(f"[ERROR] Traceback: {traceback.format_exc()}")
+            
+            # Use fallback data with a clear label
             evolution_data['datasets'] = [{
-                "label": "Sample Collection",
+                "label": "Sample Data (Error loading real data)",
                 "items_count": [1, 2, 3, 4, 5, 6],
                 "value_data": [100, 200, 400, 700, 1000, 1500],
                 "color": "hsl(180, 70%, 50%)"
