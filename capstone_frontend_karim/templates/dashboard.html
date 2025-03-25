@@ -1745,9 +1745,8 @@
           // Add collections to dropdown
           data.collections.forEach((collection) => {
             const option = document.createElement("option");
-            option.value = collection.collection_name; // Use collection_name as value for edit/delete
+            option.value = collection.collection_id; // Use collection_id as the value
             option.textContent = collection.collection_name;
-            // Store collection_id as a data attribute
             option.dataset.collectionId = collection.collection_id;
             dropdown.appendChild(option);
           });
@@ -1902,6 +1901,9 @@
           }
 
           try {
+            console.log("Collection ID:", collectionId); // Debug log
+            console.log("New name:", newCollectionName); // Debug log
+
             const response = await fetch(
               `/api/collection/edit/${encodeURIComponent(collectionId)}`,
               {
